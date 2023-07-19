@@ -54,36 +54,17 @@ class SensorHandler:
     def __init__(self, number_of_sensors : int, max_samples :int):
         self.number_of_sensors = number_of_sensors
         self.max_samples = max_samples
-        # NOT WORKING HERE, self.sensor_logs DOES NOT BECOME OF RIGHT TYPE (SensorSample)
         self.sensor_logs = [[SensorSample()]*max_samples] * self.number_of_sensors    # create number of objects needed to store the buffered sensor data
         
     def register_sample(self, sensor_id, index, value, timestamp):
-        self.sensor_logs[sensor_id][index].set(value, timestamp)
+        # ???????? SET FUNKTIONEN NEDAN KOMMER INTE UPP SOM FÖRSLAG NÄR MAN SKRIVER .set SÅ TROR INTE KOPPLINGEN TILL SensorSample OBJEKTET ÄR RÄTT
+        self.sensor_logs[sensor_id][index].set(value, timestamp)    
     
     def get_sample(self, sensor_id, index):
         return self.sensor_logs[sensor_id][index]
-        
-
-# class DataHandler(IrSensor):
-#     def __init__(self, num_sensors, max_samples):
-
-
-# class IrSensor:
-#     def __init__(self, mcp_channel: int):
-#         self.mcp_channel = mcp_channel
-        
-
-# SENSOR_1 = 0
-# SENSOR_2 = 1
-# NUM_SENSORS = 2
-# BUFFER_SIZE = 100
-
-
-# data_stack = [[0] * BUFFER_SIZE] * NUM_SENSORS
-
-# def read_sensor():
-#     data_stack[SENSOR_1] = 
-
+    
+    def get_sensor_logs(self):
+        return self.sensor_logs
 
 
         
@@ -95,23 +76,39 @@ def main():
     sensors = [IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]   # create list items to represent the sensors
     handler = SensorHandler(number_of_sensors, max_samples)
     
-    while(True):
-        for sensor_id, sensor in enumerate(sensors):
+    #while(True):
+    for _ in range(15):
+        for sensor_id, sensor in enumerate(sensors):    # ?????? SKAPAR DENNA FUNKTION VERKLIGEN TVå OLIKA SENSORER (OLIKA SENSOR ID) OCH POPULERAR RESPEKTIVE RAD I SENSOR_LOGS MATRISEN?
             handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
-            #print(sensors[0].get_sensor_data())
-    
-        if(current_readout_index >= max_samples):
-            current_readout_index = 0   # maximum buffer value reached, reset index to overwrite old data (FIFO)
             
+        if(current_readout_index >= max_samples):
+            current_readout_index = 0   # when maximum buffer value is reached reset index to overwrite old data (FIFO)
+        
+        print("sensor1; value: {:d}, timestamp: {:d}".format(handler.get_sample(0, 2).value, handler.get_sample(0, 2).timestamp))
+        print("sensor2; value: {:d}, timestamp: {:d}".format(handler.get_sample(1, 2).value, handler.get_sample(1, 2).timestamp))
+        # sensor1_id = 0
+        # sensor2_id = 1
+        # for i in range(max_samples):
+        #     print("[{:d}][{:d}]: {:d}; {:d}".format(sensor1_id, i, handler.get_sample(sensor1_id, i).value, handler.get_sample(sensor1_id, i).timestamp))
+        #     print("[{:d}][{:d}]: {:d}; {:d}".format(sensor2_id, i, handler.get_sample(sensor2_id, i).value, handler.get_sample(sensor2_id, i).timestamp))
+        time.sleep(0.1)
 
+    # ??????? NÄR JAG PRINTAR sensor_logs FÖR DE TVÅ RADERNA SOM REPRESENTERAR sensor1 RESP. sensor2 SÅ SKRIVER DEN UT SAMMA VÄRDE. VERKAR SOM BARA LÄSTA VÄRDET FÖR ENA SENSORS POPULERAR BÅDA RADERNA I sample_logs
+    test = handler.get_sensor_logs()
+    print("sensor1", test[0][1].value)
+    print("sensor2", test[1][1].value)
+    #print("test; value: {:d}, timestamp: {:d}".format(test.value, test.timestamp))
+        
     
-    rows, cols = (5, 5)
-    arr = [[0]*cols]*rows
-    print(arr)
     
-    arr[2][2] = 5
-    print(arr)
-    print(arr[2][1])
+    
+    # rows, cols = (5, 5)
+    # arr = [[0]*cols]*rows
+    # print(arr)
+    
+    # arr[2][2] = 5
+    # print(arr)
+    # print(arr[2][1])
     
     
     # a = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]]*2)
