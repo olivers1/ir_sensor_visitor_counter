@@ -54,10 +54,10 @@ class SensorHandler:
     def __init__(self, number_of_sensors : int, max_samples :int):
         self.number_of_sensors = number_of_sensors
         self.max_samples = max_samples
-        self.sensor_logs = [[SensorSample()]*max_samples] * self.number_of_sensors    # create number of objects needed to store the buffered sensor data
+        #self.sensor_logs = np.array([[SensorSample()]*max_samples] * self.number_of_sensors)    # create number of objects needed to store the buffered sensor data
+        self.sensor_logs = np.array([[SensorSample() for _ in range(max_samples)] for _ in range(self.number_of_sensors)])    # create number of objects needed to store the buffered sensor data
         
     def register_sample(self, sensor_id, index, value, timestamp):
-        # ???????? SET FUNKTIONEN NEDAN KOMMER INTE UPP SOM FÖRSLAG NÄR MAN SKRIVER .set SÅ TROR INTE KOPPLINGEN TILL SensorSample OBJEKTET ÄR RÄTT
         self.sensor_logs[sensor_id][index].set(value, timestamp)    
     
     def get_sample(self, sensor_id, index):
@@ -66,63 +66,47 @@ class SensorHandler:
     def get_sensor_logs(self):
         return self.sensor_logs
 
-
         
 def main():
     current_readout_index = 0
     number_of_sensors = 2
     max_samples = 10
     
-    sensors = [IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]   # create list items to represent the sensors
+    sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]) # create the rows in matrix to represent the sensors
+    #print(sensors)
     handler = SensorHandler(number_of_sensors, max_samples)
     
     #while(True):
     for _ in range(15):
         for sensor_id, sensor in enumerate(sensors):    # ?????? SKAPAR DENNA FUNKTION VERKLIGEN TVå OLIKA SENSORER (OLIKA SENSOR ID) OCH POPULERAR RESPEKTIVE RAD I SENSOR_LOGS MATRISEN?
-            handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
+            #handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
+            #print("sensor_id:", sensor_id)
+            #print("index:", current_readout_index)
+            handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
+            
+        current_readout_index += 1  # increase index to fill up the buffer
+        time.sleep(0.1)
             
         if(current_readout_index >= max_samples):
-            current_readout_index = 0   # when maximum buffer value is reached reset index to overwrite old data (FIFO)
+            current_readout_index = 0   # when maximum buffer index is reached reset index to overwrite old data (FIFO)
         
-        print("sensor1; value: {:d}, timestamp: {:d}".format(handler.get_sample(0, 2).value, handler.get_sample(0, 2).timestamp))
-        print("sensor2; value: {:d}, timestamp: {:d}".format(handler.get_sample(1, 2).value, handler.get_sample(1, 2).timestamp))
-        # sensor1_id = 0
-        # sensor2_id = 1
-        # for i in range(max_samples):
-        #     print("[{:d}][{:d}]: {:d}; {:d}".format(sensor1_id, i, handler.get_sample(sensor1_id, i).value, handler.get_sample(sensor1_id, i).timestamp))
-        #     print("[{:d}][{:d}]: {:d}; {:d}".format(sensor2_id, i, handler.get_sample(sensor2_id, i).value, handler.get_sample(sensor2_id, i).timestamp))
-        time.sleep(0.1)
+        if(current_readout_index == 3):
+            print("before overwritten buffer")
+            print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
+            print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
 
-    # ??????? NÄR JAG PRINTAR sensor_logs FÖR DE TVÅ RADERNA SOM REPRESENTERAR sensor1 RESP. sensor2 SÅ SKRIVER DEN UT SAMMA VÄRDE. VERKAR SOM BARA LÄSTA VÄRDET FÖR ENA SENSORS POPULERAR BÅDA RADERNA I sample_logs
+    
     test = handler.get_sensor_logs()
-    print("sensor1", test[0][1].value)
-    print("sensor2", test[1][1].value)
-    #print("test; value: {:d}, timestamp: {:d}".format(test.value, test.timestamp))
-        
+    print(type(test))
     
+    print("after overwritten buffer")
+    print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
+    print("sensor0_1", test[0][3].value, test[0][3].timestamp)
+    print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
+    print("sensor1_1:", test[1][3].value, test[1][3].timestamp)
     
-    
-    # rows, cols = (5, 5)
-    # arr = [[0]*cols]*rows
-    # print(arr)
-    
-    # arr[2][2] = 5
-    # print(arr)
-    # print(arr[2][1])
-    
-    
-    # a = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8]]*2)
-    # a = np.array([[3]*3]*2)
-    # print(a[1, 2])
-    # #a[2][2] = 3
-    # print(a)
-    # point = (1, 2)
-    # print(a[point])
-    
-    # sensor_sample = SensorSample()
-    # handler = SensorHandler(3, 4, sensor_sample)
-    # print(type(handler.sensor_logs))
-        
+    print(test.shape)
+    print(test)
         
 if __name__ == "__main__":
    main()
