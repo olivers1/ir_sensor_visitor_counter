@@ -71,6 +71,7 @@ def main():
     current_readout_index = 0
     number_of_sensors = 2
     max_samples = 10
+    readout_frequency = 10  # in Hz
     
     sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]) # create the rows in matrix to represent the sensors
     #print(sensors)
@@ -78,32 +79,34 @@ def main():
     
     #while(True):
     for _ in range(15):
-        for sensor_id, sensor in enumerate(sensors):    # ?????? SKAPAR DENNA FUNKTION VERKLIGEN TVå OLIKA SENSORER (OLIKA SENSOR ID) OCH POPULERAR RESPEKTIVE RAD I SENSOR_LOGS MATRISEN?
+        for sensor_id, sensor in enumerate(sensors):
             #handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
-            #print("sensor_id:", sensor_id)
-            #print("index:", current_readout_index)
             handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
-            
-        current_readout_index += 1  # increase index to fill up the buffer
-        time.sleep(0.1)
-            
-        if(current_readout_index >= max_samples):
-            current_readout_index = 0   # when maximum buffer index is reached reset index to overwrite old data (FIFO)
+        
+        print("_:", _)
+        print("current_readout_index:", current_readout_index)    
         
         if(current_readout_index == 3):
             print("before overwritten buffer")
             print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
             print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
 
+        current_readout_index += 1  # increase index to where store sensor readouts in the buffer
+        
+        if(current_readout_index >= max_samples):
+            current_readout_index = 0   # when maximum buffer index is reached reset it to overwrite old data (FIFO)
+            
+        time.sleep(1/readout_frequency) # setting periodic time for sensor readout
+        
     
     test = handler.get_sensor_logs()
     print(type(test))
     
-    print("after overwritten buffer")
-    print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
-    print("sensor0_1", test[0][3].value, test[0][3].timestamp)
-    print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
-    print("sensor1_1:", test[1][3].value, test[1][3].timestamp)
+    # print("after overwritten buffer")
+    # print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
+    # print("sensor0_1", test[0][3].value, test[0][3].timestamp)
+    # print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
+    # print("sensor1_1:", test[1][3].value, test[1][3].timestamp)
     
     print(test.shape)
     print(test)
