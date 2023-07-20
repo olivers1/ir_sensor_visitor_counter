@@ -1,4 +1,5 @@
 import numpy as np
+from enum import Enum
 
 # Import SPI library (for hardware SPI) and MCP3008 library.
 import Adafruit_GPIO.SPI as SPI
@@ -30,8 +31,8 @@ mcp = Adafruit_MCP3008.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
 
 class SensorSample:
     def __init__(self):
-        self.value : int = 0
-        self.timestamp : int = 0
+        self.value: int = 0
+        self.timestamp: int = 0
         
     def set(self, value, timestamp):
         self.value = value
@@ -42,7 +43,7 @@ class SensorSample:
 
 
 class IrSensor:
-    def __init__(self, mcp_channel: int):
+    def __init__(self, mcp_channel :int):
         self.mcp_channel = mcp_channel
         
     def get_sensor_data(self):
@@ -50,10 +51,32 @@ class IrSensor:
         return mcp.read_adc(self.mcp_channel), round(time.time()*1000)
 
 
+# class SensorHandler:
+#     def __init__(self, number_of_sensors: int, max_samples: int):
+#         self.number_of_sensors = number_of_sensors
+#         self.max_samples = max_samples
+#         #self.sensor_logs = np.array([[SensorSample()]*max_samples] * self.number_of_sensors)    # create number of objects needed to store the buffered sensor data
+#         self.sensor_logs = np.array([[SensorSample() for _ in range(max_samples)] for _ in range(self.number_of_sensors)])    # create number of objects needed to store the buffered sensor data
+        
+#     def register_sample(self, sensor_id, index, value, timestamp):
+#         self.sensor_logs[sensor_id][index].set(value, timestamp)    
+    
+#     def get_sample(self, sensor_id, index):
+#         return self.sensor_logs[sensor_id][index]
+    
+#     def get_sensor_logs(self):
+#         return self.sensor_logs
+
+class SensorTrigState(Enum):
+        NO_TRIG = 0
+        TRIG = 1
+
+
 class SensorHandler:
-    def __init__(self, number_of_sensors : int, max_samples :int):
+    def __init__(self, number_of_sensors: int, max_samples: int, sensor_trig_threshold: int):
         self.number_of_sensors = number_of_sensors
         self.max_samples = max_samples
+        self.sensor_trig_threshold = sensor_trig_threshold
         #self.sensor_logs = np.array([[SensorSample()]*max_samples] * self.number_of_sensors)    # create number of objects needed to store the buffered sensor data
         self.sensor_logs = np.array([[SensorSample() for _ in range(max_samples)] for _ in range(self.number_of_sensors)])    # create number of objects needed to store the buffered sensor data
         
@@ -65,51 +88,116 @@ class SensorHandler:
     
     def get_sensor_logs(self):
         return self.sensor_logs
+    
+    def get_sample_trig_state(self, sensor_id: int, index):
+        sensor_trig_state = SensorTrigState.NO_TRIG
+        sensor_value = self.get_sample(sensor_id, index).value  # get readout sensor value
+        sensor_timestamp = self.get_sample(sensor_id, index).timestamp  # get readout sensor timestamp
+        
+        if(sensor_value < self.sensor_trig_threshold):   # detect if sensor was trigged or not
+            sensor_trig_state = SensorTrigState.TRIG    # trig detected
+        else:
+            sensor_trig_state = SensorTrigState.NO_TRIG  # no trig detected
+            
+        return sensor_trig_state, sensor_timestamp
+
+
+# states = {
+#     "IDLE" : Idle(),
+#     "A_OUT" = A_Out(),
+#     "B_OUT" = B_Out(),
+#     "C_OUT" = C_Out(),
+#     "OUT_DETECTED" = OutDetected(),
+#     "A_IN" = A_In(),
+#     "B_IN" = B_In(),
+#     "C_IN" = C_In(),
+#     "IN_DETECTED" = InDetected()
+#     }
+
+    
+# create a state machine to handle the transitions to the states in which the program can be in 
+class VisitorCounter:
+    state = None    # initial state of the state machine
+    
+    def __init__(self, num_trig_threshold, num_false_trig_threshold, time_diff_threshold):
+        # self.num_trig_threshold = num_trig_threshold
+        # self.num_false_trig_threshold = num_false_trig_threshold
+        # self.time_diff_threshold = time_diff_threshold
+        pass
+    
+        
+    
+    #def setState(self,  : state)
+
+
+class Idle:
+    # class attributes (global variables within a class)
+    sensor0 = 0 
+    sensor1 = 1
+    
+    def __init__(self, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
+        self.index = index
+        self.sensor_handler = sensor_handler
+        self.num_trig_threshold = num_trig_threshold
+        self.num_false_trig_threshold = num_false_trig_threshold
+        self.time_diff_threshold = time_diff_threshold
+        
+    def get_first_sensor_trig(self):
+        sensor0 = self.sensor_handler.get_sample_trig_state(Idle.sensor0, self.index)  # returns a tuple (trig_state, timestamp)
+        sensor1 = self.sensor_handler.get_sample_trig_state(Idle.sensor1, self.index)  # returns a tuple (trig_state, timestamp)
+        
+        # check trig state for sensors
+        # ---| FUNCTION DESCRIPTION |---
+        # run until first trig is detected. when a trig for any sensor is detected, the function must return trig_state and timestamp
+        # maybe this part of function should be implemented in the IrSensor class instead
+        # the timestamp and trig state change will be used to determine which sensor that was trigged first
+        
+               
 
         
 def main():
     current_readout_index = 0
     number_of_sensors = 2
     max_samples = 10
+    sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
     readout_frequency = 10  # in Hz
     
     sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]) # create the rows in matrix to represent the sensors
     #print(sensors)
-    handler = SensorHandler(number_of_sensors, max_samples)
+    sensor_handler = SensorHandler(number_of_sensors, max_samples, sensor_trig_threshold)
     
     #while(True):
     for _ in range(15):
         for sensor_id, sensor in enumerate(sensors):
-            #handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
-            handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
+            #sensor_handle.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
+            sensor_handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
         
-        print("_:", _)
         print("current_readout_index:", current_readout_index)    
         
         if(current_readout_index == 3):
-            print("before overwritten buffer")
-            print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
-            print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
+            print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp))
+            print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(sensor_handler.get_sample(1, 3).value, sensor_handler.get_sample(1, 3).timestamp))
 
+        print(sensor_handler.get_sample_trig_state(0, current_readout_index)[0].name)    # extract first tuple value to get sensor trig state
         current_readout_index += 1  # increase index to where store sensor readouts in the buffer
         
         if(current_readout_index >= max_samples):
             current_readout_index = 0   # when maximum buffer index is reached reset it to overwrite old data (FIFO)
-            
+        
         time.sleep(1/readout_frequency) # setting periodic time for sensor readout
         
+    print("-----")
+    for i in range(max_samples):
+        for j in range(number_of_sensors):
+            print("[{:d}][{:d}] {:d} : {:d}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp))
+    print("-----")
     
-    test = handler.get_sensor_logs()
+    test = sensor_handler.get_sensor_logs()
     print(type(test))
-    
-    # print("after overwritten buffer")
-    # print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(0, 3).value, handler.get_sample(0, 3).timestamp))
-    # print("sensor0_1", test[0][3].value, test[0][3].timestamp)
-    # print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(handler.get_sample(1, 3).value, handler.get_sample(1, 3).timestamp))
-    # print("sensor1_1:", test[1][3].value, test[1][3].timestamp)
-    
     print(test.shape)
     print(test)
+    
+    
         
 if __name__ == "__main__":
    main()
