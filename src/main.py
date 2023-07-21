@@ -1,5 +1,6 @@
 import numpy as np
 from enum import Enum
+from collections import OrderedDict
 
 # Import SPI library (for hardware SPI) and MCP3008 library.
 import Adafruit_GPIO.SPI as SPI
@@ -119,38 +120,61 @@ class SensorHandler:
 class VisitorCounter:
     state = None    # initial state of the state machine
     
-    def __init__(self, num_trig_threshold, num_false_trig_threshold, time_diff_threshold):
-        # self.num_trig_threshold = num_trig_threshold
-        # self.num_false_trig_threshold = num_false_trig_threshold
-        # self.time_diff_threshold = time_diff_threshold
-        pass
-    
-        
-    
-    #def setState(self,  : state)
-
-
-class Idle:
-    # class attributes (global variables within a class)
-    sensor0 = 0 
-    sensor1 = 1
-    
-    def __init__(self, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
+    def __init__(self, sensors, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
         self.index = index
         self.sensor_handler = sensor_handler
         self.num_trig_threshold = num_trig_threshold
         self.num_false_trig_threshold = num_false_trig_threshold
         self.time_diff_threshold = time_diff_threshold
-        
+        self.sensor_dict = OrderedDict()   # dict of type OrderedDict where items are stored in the order they are added
+        for sensor_id, sensor in enumerate(sensors):
+            self.sensor_dict["sensor{0}".format(sensor)] = sensor   # creates sensor0, sensor1, .. variables stored in same order as they were added to the dict
+            
     def get_first_sensor_trig(self):
-        sensor0 = self.sensor_handler.get_sample_trig_state(Idle.sensor0, self.index)  # returns a tuple (trig_state, timestamp)
+        for key, value in self.sensor_dict:
+            key = self.sensor_handler.get_sample_trig_state(self.sensor_dict[key], self.index)  # returns a tuple (trig_state, timestamp)
         sensor1 = self.sensor_handler.get_sample_trig_state(Idle.sensor1, self.index)  # returns a tuple (trig_state, timestamp)
         
-        # check trig state for sensors
-        # ---| FUNCTION DESCRIPTION |---
-        # run until first trig is detected. when a trig for any sensor is detected, the function must return trig_state and timestamp
-        # maybe this part of function should be implemented in the IrSensor class instead
-        # the timestamp and trig state change will be used to determine which sensor that was trigged first
+            
+        
+class Idle:
+    pass
+
+class A_Out:
+    pass
+
+class B_Out:
+    pass
+
+class C_Out:
+    pass
+
+class OutDetected:
+    pass
+
+
+
+# class Idle:
+#     # class attributes (global variables within a class)
+#     sensor0 = 0 
+#     sensor1 = 1
+    
+#     def __init__(self, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
+#         self.index = index
+#         self.sensor_handler = sensor_handler
+#         self.num_trig_threshold = num_trig_threshold
+#         self.num_false_trig_threshold = num_false_trig_threshold
+#         self.time_diff_threshold = time_diff_threshold
+        
+#     def get_first_sensor_trig(self):
+#         sensor0 = self.sensor_handler.get_sample_trig_state(Idle.sensor0, self.index)  # returns a tuple (trig_state, timestamp)
+#         sensor1 = self.sensor_handler.get_sample_trig_state(Idle.sensor1, self.index)  # returns a tuple (trig_state, timestamp)
+        
+#         # check trig state for sensors
+#         # ---| FUNCTION DESCRIPTION |---
+#         # run until first trig is detected. when a trig for any sensor is detected, the function must return trig_state and timestamp
+#         # maybe this part of function should be implemented in the IrSensor class instead
+#         # the timestamp and trig state change will be used to determine which sensor that was trigged first
         
                
 
@@ -161,10 +185,14 @@ def main():
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
     readout_frequency = 10  # in Hz
+    num_trig_threshold = 5
+    num_false_trig_threshold = 5
+    time_diff_threshold = 0.2
     
-    sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]) # create the rows in matrix to represent the sensors
+    sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples, sensor_trig_threshold)
+    visitor_counter = VisitorCounter(sensors, current_readout_index, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
     
     #while(True):
     for _ in range(15):
@@ -179,6 +207,8 @@ def main():
             print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(sensor_handler.get_sample(1, 3).value, sensor_handler.get_sample(1, 3).timestamp))
 
         print(sensor_handler.get_sample_trig_state(0, current_readout_index)[0].name)    # extract first tuple value to get sensor trig state
+        print(sensor_handler.get_sample_trig_state(0, current_readout_index)[0].name)    # extract first tuple value to get sensor trig state
+        
         current_readout_index += 1  # increase index to where store sensor readouts in the buffer
         
         if(current_readout_index >= max_samples):
