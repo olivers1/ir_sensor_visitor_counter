@@ -30,6 +30,11 @@ SPI_DEVICE = 0
 mcp = Adafruit_MCP3008.MCP3008(spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE))
 
 
+class SensorTrigState(Enum):
+    NO_TRIG = 0
+    TRIG = 1
+
+
 class SensorSample:
     def __init__(self):
         self.value: int = 0
@@ -62,27 +67,6 @@ class IrSensor:
         else:
             trig_state = SensorTrigState.NO_TRIG  # no trig detected
         return value, timestamp, trig_state
-
-
-# class SensorHandler:
-#     def __init__(self, number_of_sensors: int, max_samples: int):
-#         self.number_of_sensors = number_of_sensors
-#         self.max_samples = max_samples
-#         #self.sensor_logs = np.array([[SensorSample()]*max_samples] * self.number_of_sensors)    # create number of objects needed to store the buffered sensor data
-#         self.sensor_logs = np.array([[SensorSample() for _ in range(max_samples)] for _ in range(self.number_of_sensors)])    # create number of objects needed to store the buffered sensor data
-        
-#     def register_sample(self, sensor_id, index, value, timestamp):
-#         self.sensor_logs[sensor_id][index].set(value, timestamp)    
-    
-#     def get_sample(self, sensor_id, index):
-#         return self.sensor_logs[sensor_id][index]
-    
-#     def get_sensor_logs(self):
-#         return self.sensor_logs
-
-class SensorTrigState(Enum):
-        NO_TRIG = 0
-        TRIG = 1
 
 
 class SensorHandler:
@@ -119,27 +103,28 @@ class SensorHandler:
 class VisitorCounter:
     state = None    # initial state of the state machine
     
-    def __init__(self, sensors, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
-        self.index = index
+    def __init__(self, sensors, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
         self.sensor_handler = sensor_handler
         self.num_trig_threshold = num_trig_threshold
         self.num_false_trig_threshold = num_false_trig_threshold
         self.time_diff_threshold = time_diff_threshold
         self.sensor_dict = OrderedDict()   # dict of type OrderedDict where items are stored in the order they are added
-        for sensor in enumerate(sensors):
-            self.sensor_dict["sensor{0}".format(sensor)] = sensor  # creates sensor0, sensor1, .. variables stored in same order as they were added to the dict
+        for sensor in range(len(sensors)):
+            self.sensor_dict["sensor{0}".format(sensor)] = sensor   # creates sensor0, sensor1, .. variables stored in same order as they were added to the dict
             
-    def get_first_sensor_trig(self):
-        print(self.sensor_dict.keys())
+    def get_first_sensor_trig(self, index: int):
+        index = index
+        temp_sensor_dict = {}   # dictionary to store temp sensor values to compare sensor data
+        temp_sensor_dict = OrderedDict()
+        # store current sensor readouts in to check which sensor that was trigged first
+        for key, value in self.sensor_dict.items():
+            temp_sensor_dict["sens{0}".format(value)] = self.sensor_handler.get_sample(value, index)    # returns a SensorSample object holding (value, timestamp, trigstate)
+            print(temp_sensor_dict["sens0"].value)
+
+        # ===|CONTINUE CODING HERE|===
+        # compare time and trig state to determine which sensor that trigged first
         
-        
-        # for key, value in self.sensor_dict:
-        #     test = value.value
-        #     print(test)
-            #key = self.sensor_handler.get_sample_trig_state(self.sensor_dict[key], self.index)  # returns a tuple (trig_state, timestamp)
-            #print("key:", key)
-        #sensor1 = self.sensor_handler.get_sample_trig_state(Idle.sensor1, self.index)  # returns a tuple (trig_state, timestamp)
-        
+         
             
         
 class Idle:
@@ -197,14 +182,15 @@ def main():
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
-    visitor_counter = VisitorCounter(sensors, current_readout_index, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
-    visitor_counter.get_first_sensor_trig()
+    visitor_counter = VisitorCounter(sensors, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
+    
     
     #while(True):
     for _ in range(15):
         for sensor_id, sensor in enumerate(sensors):
             #sensor_handle.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
             sensor_handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
+            visitor_counter.get_first_sensor_trig(current_readout_index)
         
         print("current_readout_index:", current_readout_index)    
         
@@ -222,7 +208,7 @@ def main():
     print("-----")
     for i in range(max_samples):
         for j in range(number_of_sensors):
-            print("[{:d}][{:d}] {:d} : {:d}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp))
+            print("[{:d}][{:d}] {:d} : {:d} : {:s}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp, sensor_handler.get_sample(j, i).trig_state.name))
     print("-----")
     
     test = sensor_handler.get_sensor_logs()
