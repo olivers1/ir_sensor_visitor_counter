@@ -104,22 +104,36 @@ class VisitorCounter:
     state = None    # initial state of the state machine
     
     def __init__(self, sensors, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
+        self.sensors = sensors
         self.sensor_handler = sensor_handler
         self.num_trig_threshold = num_trig_threshold
         self.num_false_trig_threshold = num_false_trig_threshold
         self.time_diff_threshold = time_diff_threshold
-        self.sensor_dict = OrderedDict()   # dict of type OrderedDict where items are stored in the order they are added
-        for sensor in range(len(sensors)):
-            self.sensor_dict["sensor{0}".format(sensor)] = sensor   # creates sensor0, sensor1, .. variables stored in same order as they were added to the dict
-            
+        self.sensor_dict = OrderedDict()   # dict of type OrderedDict in where the added items are stored in the order they are added
+           
     def get_first_sensor_trig(self, index: int):
-        index = index
-        temp_sensor_dict = {}   # dictionary to store temp sensor values to compare sensor data
-        temp_sensor_dict = OrderedDict()
-        # store current sensor readouts in to check which sensor that was trigged first
+        # store current sensor readouts in dictionary to check which sensor that was trigged first
+        for sensor in range(len(self.sensors)):
+            self.sensor_dict["sensor{0}".format(sensor)] = self.sensor_handler.get_sample(sensor, index)   # creates sensor0, sensor1, .. as keys (items stored in same order as they were added to the dict) with SensorHandler object as key
+        #print(self.sensor_dict) 
+        
+        # identify which sensor that was trigged first
+        trigged_sensors = []    # list to store trig status of each of the sensors
         for key, value in self.sensor_dict.items():
-            temp_sensor_dict["sens{0}".format(value)] = self.sensor_handler.get_sample(value, index)    # returns a SensorSample object holding (value, timestamp, trigstate)
-            print(temp_sensor_dict["sens0"].value)
+            if value.trig_state == SensorTrigState.TRIG:
+                trigged_sensors.append(key)
+            else:
+                trigged_sensors.append(None)
+        
+        # print(self.sensor_dict["sensor0"].value)
+        # print(self.sensor_dict["sensor0"].timestamp)
+        # print(self.sensor_dict["sensor0"].trig_state)    
+        # print(self.sensor_dict["sensor0"].value)
+        # print(self.sensor_dict["sensor0"].timestamp)
+        # print(self.sensor_dict["sensor0"].trig_state)
+        return trigged_sensors
+        
+         
 
         # ===|CONTINUE CODING HERE|===
         # compare time and trig state to determine which sensor that trigged first
@@ -179,7 +193,7 @@ def main():
     num_false_trig_threshold = 5
     time_diff_threshold = 0.2
     
-    sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents the sensors
+    sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
     visitor_counter = VisitorCounter(sensors, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
@@ -190,9 +204,12 @@ def main():
         for sensor_id, sensor in enumerate(sensors):
             #sensor_handle.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
             sensor_handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
-            visitor_counter.get_first_sensor_trig(current_readout_index)
         
-        print("current_readout_index:", current_readout_index)    
+        print("current_readout_index:", current_readout_index)
+            
+        trigged_sensors = visitor_counter.get_first_sensor_trig(current_readout_index)
+        print("trigged_sensors:", trigged_sensors)
+            
         
         if(current_readout_index == 3):
             print("sensor: 0; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp, sensor_handler.get_sample(0, 3).trig_state.name))
