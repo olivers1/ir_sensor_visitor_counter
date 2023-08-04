@@ -117,11 +117,11 @@ class VisitorCounter:
         self.sensor_handler = sensor_handler
         self.num_trig_threshold = num_trig_threshold
         self.num_false_trig_threshold = num_false_trig_threshold
-        self.time_diff_threshold = time_diff_threshold
+        #self.time_diff_threshold = time_diff_threshold
         self.sensor_dict = OrderedDict()   # dict of type OrderedDict in where the added items are stored in the order they are added
         self.current_sensor_trig_state = [] # list to store trig status of each of the sensors
-        self.out_trig_state_counter = 0
-        self.in_trig_state_counter = 0
+        self.exit_trig_state_counter = 0
+        self.entry_trig_state_counter = 0
         self.current_state = IdleState()
         
     def get_current_sensor_trig_state(self, index: int):
@@ -148,54 +148,27 @@ class VisitorCounter:
         # identify which sensor that was trigged first
         if sensor_trig_state[0] == SensorTrigState.TRIG and sensor_trig_state[1] == SensorTrigState.NO_TRIG:
             # check if enough number of positive sensor trigs have been reached
-            if self.positive_trig_state_counter >= self.num_trig_threshold:
-                return ExitStateA()     # movement towards exit has been detected, switch state
-            in_trig_state_counter = 0   # reset opposite movement detection counter
-            out_trig_state_counter += 1 # increase positive trig counter
+            if self.exit_trig_state_counter >= self.num_trig_threshold:
+                self.exit_trig_state_counter = 0    # reset both entry and exit counters
+                self.entry_trig_state_counter = 0
+                print("initial EXIT movement detected")
+                return ExitStateA()     # initial movement towards exit has been detected, switch state
+            
+            self.entry_trig_state_counter = 0   # reset opposite movement detection counter
+            self.exit_trig_state_counter += 1   # increase positive trig counter
                 
         elif sensor_trig_state[0] == SensorTrigState.NO_TRIG and sensor_trig_state[1] == SensorTrigState.TRIG:
             # check if enough number of positive sensor trigs have been reached
-            if self.positive_trig_state_counter >= self.num_trig_threshold:
-                return EntryStateA()      # movement towards entry has been detected, switch state
-            out_trig_state_counter = 0  # reset opposite movement detection counter
-            in_trig_state_counter += 1  # increase positive trig counter
-              
-    
+            if self.entry_trig_state_counter >= self.num_trig_threshold:
+                self.exit_trig_state_counter = 0    # reset both entry and exit counters
+                self.entry_trig_state_counter = 0
+                print("initial ENTRY movement detected")
+                return EntryStateA()    # initial movement towards entry has been detected, switch state
             
+            self.exit_trig_state_counter = 0    # reset opposite movement detection counter
+            self.entry_trig_state_counter += 1  # increase positive trig counter
         
-    
-        
-         
-
-        # ===|CONTINUE CODING HERE|===
-        # compare time and trig state to determine which sensor that trigged first
-        
-
-
-
-# class Idle:
-#     # class attributes (global variables within a class)
-#     sensor0 = 0 
-#     sensor1 = 1
-    
-#     def __init__(self, index: int, sensor_handler: SensorHandler, num_trig_threshold: int, num_false_trig_threshold: int, time_diff_threshold: int):
-#         self.index = index
-#         self.sensor_handler = sensor_handler
-#         self.num_trig_threshold = num_trig_threshold
-#         self.num_false_trig_threshold = num_false_trig_threshold
-#         self.time_diff_threshold = time_diff_threshold
-        
-#     def get_first_sensor_trig(self):
-#         sensor0 = self.sensor_handler.get_sample_trig_state(Idle.sensor0, self.index)  # returns a tuple (trig_state, timestamp)
-#         sensor1 = self.sensor_handler.get_sample_trig_state(Idle.sensor1, self.index)  # returns a tuple (trig_state, timestamp)
-        
-#         # check trig state for sensors
-#         # ---| FUNCTION DESCRIPTION |---
-#         # run until first trig is detected. when a trig for any sensor is detected, the function must return trig_state and timestamp
-#         # maybe this part of function should be implemented in the IrSensor class instead
-#         # the timestamp and trig state change will be used to determine which sensor that was trigged first
-        
-               
+        return self.exit_trig_state_counter, self.entry_trig_state_counter    
 
         
 def main():
@@ -222,10 +195,11 @@ def main():
         
         print("current_readout_index:", current_readout_index)
             
-        trigged_sensors = visitor_counter.get_current_sensor_trig_state(current_readout_index)
-        for i in range(len(trigged_sensors)):
-            print("sensor{:d}: {:s}".format(i, trigged_sensors[i].name))
+        # trigged_sensors = visitor_counter.get_current_sensor_trig_state(current_readout_index)
+        # for i in range(len(trigged_sensors)):
+        #     print("sensor{:d}: {:s}".format(i, trigged_sensors[i].name))
         
+        print(visitor_counter.detect_movement_direction(0))
             
         
         if(current_readout_index == 3):
