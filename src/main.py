@@ -1,6 +1,5 @@
 import numpy as np
 from enum import Enum
-from collections import OrderedDict
 from abc import ABC, abstractmethod
 
 # Import SPI library (for hardware SPI) and MCP3008 library.
@@ -118,7 +117,7 @@ class Idle(SensorState):
     def __init__(self, timestamp: int):
         self.last_updated = timestamp
         
-    def change_state(self):
+    def change_state(self, timestamp: int):
         print("hello world!")
     
     def reset_state(self):
@@ -132,59 +131,45 @@ class Entry_0():
     pass
 
 class SensorStateManager:
+    current_state: SensorState = Idle
     
-    
-    def __init__(self, sensor_trig_threshold: int, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
-        self.latest_sensor_readout_timestamp = 0
-        self.current_state: SensorState = Idle(self.latest_sensor_readout_timestamp)   # initial state when no sensor has been trigged
+    def __init__(self, number_of_sensors: int, sensor_trig_threshold: int, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
+        self.number_of_sensors = number_of_sensors
+        self.sensor_sample_counter = 0   # keeps track when to clear sensor trig state list
+        self.current_state: SensorState = Idle(0)  # initial state when no sensor has been trigged
         self.sensor_trig_threshold = sensor_trig_threshold
         self.num_positive_trig_threshold = num_positive_trig_threshold
         self.num_negative_trig_threshold = num_negative_trig_threshold
-        self.exit_trig_state_counter = 0
-        self.entry_trig_state_counter = 0
-        self.sensor_trig_states = []    # list containing trig status for each of the sensors
+        self.sensor_trig_states = []    # list containing trig status for each of the sensors, list index corresponds to sensor_id repeated every (number of sensors) as offset
+        self.sensor0_trig_states = []
+        self.sensor1_trig_states = []
+        self.change_state_enabler = False
         
     def set_current_sensor_trig_state(self, value: int, timestamp: int):
-        self.latest_sensor_readout_timestamp = timestamp    # update Idle class with latest sensor readout timestamp
-        # evalute readout value to evalute if sensor was trigged
+        # evalute sensor value to identiy if any of the sensors were trigged
         trig_state = SensorTrigState.NO_TRIG
         if(value < self.sensor_trig_threshold):     # detect sensor trig. below threshold == trig, above threshold = no trig
             trig_state = SensorTrigState.TRIG       # trig detected
         else:
             trig_state = SensorTrigState.NO_TRIG    # no trig detected
-        self.sensor_trig_states.append(trig_state)  # add sensor trig state to list
-    
-    def detect_moving_direction(self):
-        # identify which sensor that was trigged first
-        if self.sensor_trig_states[0] == SensorTrigState.TRIG and self.sensor_trig_states[1] == SensorTrigState.NO_TRIG:
-            # check if enough number of positive sensor trigs have been reached
-            if self.exit_trig_state_counter >= self.num_positive_trig_threshold:
-                self.exit_trig_state_counter = 0    # reset both entry and exit counters
-                self.entry_trig_state_counter = 0
-                print("initial EXIT movement detected")
-                self.sensor_trig_states.clear()     # clear list to contain latest trig states only
-                return Exit_0()     # initial movement towards exit detected, switch state
+        self.sensor_trig_states.insert(self.sensor_sample_counter, trig_state)  # at index, insert sensor trig state
+        self.sensor_sample_counter += 1
+        
+        # slice list check if sensor trigs are the same for the whole sequence
+        self.sensor0_trig_states = self.sensor_trig_states[0::2]
+        self.sensor1_trig_states = self.sensor_trig_states[1::2]
+        
+        if(self.change_state_enabler == True):
+            if(all(item1 == self.sensor0_trig_states[0] for item1 in self.sensor0_trig_states) and all(item2 == self.sensor1_trig_states[0] for item2 in self.sensor1_trig_states)):
+                print(self.sensor0_trig_states)
+                print(self.sensor1_trig_states)
+                self.current_state.change_state(timestamp)
+        
+        if(self.sensor_sample_counter >= (self.number_of_sensors * self.num_positive_trig_threshold)):  # check if all sensors have populated list with 
+            self.sensor_sample_counter = 0      # reset index to enable fifo system
+            self.change_state_enabler = True    # buffer has been filled up then enable change of state
             
-            self.entry_trig_state_counter = 0   # reset opposite movement detection counter
-            self.exit_trig_state_counter += 1   # increase positive trig counter
-                
-        elif self.sensor_trig_states[0] == SensorTrigState.NO_TRIG and self.sensor_trig_states[1] == SensorTrigState.TRIG:
-            # check if enough number of positive sensor trigs have been reached
-            if self.entry_trig_state_counter >= self.num_positive_trig_threshold:
-                self.exit_trig_state_counter = 0    # reset both entry and exit counters
-                self.entry_trig_state_counter = 0
-                print("initial ENTRY movement detected")
-                self.sensor_trig_states.clear()     # clear list to contain latest trig states only
-                return Entry_0()    # initial movement towards entry detected, switch state
             
-            self.exit_trig_state_counter = 0    # reset opposite movement detection counter
-            self.entry_trig_state_counter += 1  # increase positive trig counter
-            self.sensor_trig_states.clear()     # clear list to contain latest trig states only
-        
-        
-        #return timestamp, trig_state
-        
-
 
 """  
 # create a state machine to handle the transitions to the states in which the program can be in 
@@ -265,7 +250,7 @@ def main():
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
     #visitor_counter = VisitorCounter(sensors, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
     #visitor_counter = VisitorCounter(sensors, sensor_handler, num_positive_trig_threshold, num_negative_trig_threshold)
-    sensor_state_manager = SensorStateManager(sensor_trig_threshold, num_positive_trig_threshold, num_negative_trig_threshold)
+    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_trig_threshold, num_positive_trig_threshold, num_negative_trig_threshold)
     
     #while(True):
     for _ in range(15):
@@ -277,13 +262,6 @@ def main():
             sensor_state_manager.set_current_sensor_trig_state(sensor_sample.value, sensor_sample.timestamp)
             
         print("current_readout_index:", current_readout_index)
-        sensor_state_manager.detect_moving_direction()
-            
-        # trigged_sensors = visitor_counter.get_current_sensor_trig_state(current_readout_index)
-        # for i in range(len(trigged_sensors)):
-        #     print("sensor{:d}: {:s}".format(i, trigged_sensors[i].name))
-        
-        #print(visitor_counter.detect_movement_direction(0))
             
         
         if(current_readout_index == 3):
