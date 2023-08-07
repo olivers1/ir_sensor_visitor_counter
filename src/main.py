@@ -39,24 +39,34 @@ class SensorSample:
     def __init__(self):
         self.value: int = 0
         self.timestamp: int = 0
+        self.trig_state = SensorTrigState.NO_TRIG
         
-    def set(self, value, timestamp):
+    def set(self, value, timestamp, trig_state):
         self.value = value
         self.timestamp = timestamp
+        self.trig_state = trig_state
     
     def get(self):
-        return self.value, self.timestamp
+        return self.value, self.timestamp, self.trig_state
 
 
 class IrSensor:
-    def __init__(self, mcp_channel :int):
+    def __init__(self, mcp_channel :int, sensor_trig_threshold: int):
         self.mcp_channel = mcp_channel
+        self.sensor_trig_threshold = sensor_trig_threshold
         
     def get_sensor_data(self):
         # read sensor value and timestamp
         value = mcp.read_adc(self.mcp_channel)
         timestamp = round(time.time()*1000)
-        return value, timestamp
+        
+        # evalute readout value to determine sensor trig
+        trig_state = SensorTrigState.NO_TRIG
+        if(value < self.sensor_trig_threshold):   # detect sensor trig. below threshold == trig, above threshold = no trig
+            trig_state = SensorTrigState.TRIG    # trig detected
+        else:
+            trig_state = SensorTrigState.NO_TRIG  # no trig detected
+        return value, timestamp, trig_state
 
 
 class SensorHandler:
@@ -66,8 +76,8 @@ class SensorHandler:
         #self.sensor_logs = np.array([[SensorSample()]*max_samples] * self.number_of_sensors)    # create number of objects needed to store the buffered sensor data
         self.sensor_logs = np.array([[SensorSample() for _ in range(max_samples)] for _ in range(self.number_of_sensors)])    # create number of objects needed to store the buffered sensor data
         
-    def register_sample(self, sensor_id, index, value, timestamp):
-        self.sensor_logs[sensor_id][index].set(value, timestamp)    
+    def register_sample(self, sensor_id, index, value, timestamp, trig_state):
+        self.sensor_logs[sensor_id][index].set(value, timestamp, trig_state)    
     
     def get_sample(self, sensor_id, index):
         return self.sensor_logs[sensor_id][index]
@@ -75,30 +85,6 @@ class SensorHandler:
     def get_sensor_logs(self):
         return self.sensor_logs
 
-# crate classes for all below states
-# states = {
-#     "IDLE" : Idle(),
-#     "A_OUT" = A_OutState(),
-#     "B_OUT" = B_Out(),
-#     "C_OUT" = C_Out(),
-#     "OUT_DETECTED" = OutDetected(),
-#     "A_IN" = A_In(),
-#     "B_IN" = B_In(),
-#     "C_IN" = C_In(),
-#     "IN_DETECTED" = InDetected()
-#     }
-
-
-
-
-# class VisitorCounter:
-#     def __init__(self, sensors, sensor_handler: SensorHandler, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
-#         self.sensors = sensors
-#         self.senor_handler = sensor_handler
-#         self.num_positive_trig_threshold = num_positive_trig_threshold
-#         self.num_negative_trig_threshold = num_negative_trig_threshold
-#         self.exit_trig_state_counter = 0
-#         self.entry_trig_state_counter = 0
 
 class SensorState(ABC):
     # store timestamp when state was reached
@@ -127,47 +113,31 @@ class Idle(SensorState):
 class Exit_0():
     pass
 
+
 class Entry_0():
     pass
+
 
 class SensorStateManager:
     current_state: SensorState = Idle
     
-    def __init__(self, number_of_sensors: int, sensor_trig_threshold: int, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
+    def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
         self.number_of_sensors = number_of_sensors
-        self.sensor_sample_counter = 0   # keeps track when to clear sensor trig state list
-        self.current_state: SensorState = Idle(0)  # initial state when no sensor has been trigged
-        self.sensor_trig_threshold = sensor_trig_threshold
+        self.sensor_handler = sensor_handler
         self.num_positive_trig_threshold = num_positive_trig_threshold
         self.num_negative_trig_threshold = num_negative_trig_threshold
-        self.sensor_trig_states = []    # list containing trig status for each of the sensors, list index corresponds to sensor_id repeated every (number of sensors) as offset
-        self.sensor0_trig_states = []
-        self.sensor1_trig_states = []
+
         self.change_state_enabler = False
         
-    def set_current_sensor_trig_state(self, value: int, timestamp: int):
-        # evalute sensor value to identiy if any of the sensors were trigged
-        trig_state = SensorTrigState.NO_TRIG
-        if(value < self.sensor_trig_threshold):     # detect sensor trig. below threshold == trig, above threshold = no trig
-            trig_state = SensorTrigState.TRIG       # trig detected
-        else:
-            trig_state = SensorTrigState.NO_TRIG    # no trig detected
-        self.sensor_trig_states.insert(self.sensor_sample_counter, trig_state)  # at index, insert sensor trig state
-        self.sensor_sample_counter += 1
+    def evaluate_sensor_trig_states(self, current_index: int):
+        for current_index in range(current_index, current_index - self.num_positive_trig_threshold, -1):   # check a number of latest consecutive sensor trig status readouts (number specified by num_positive_trig_threshold) individually, for each sensor have the same trig status
+            for j in range(self.number_of_sensors):
+                print("[{:d}][{:d}[{:s}]".format(j, current_index, self.sensor_handler.get_sample(j, current_index).trig_state.name))
         
-        # slice list check if sensor trigs are the same for the whole sequence
-        self.sensor0_trig_states = self.sensor_trig_states[0::2]
-        self.sensor1_trig_states = self.sensor_trig_states[1::2]
+        # write code here to compare check if each individual sensor has num_positive_trig_threshold consecutive same values this means the sensor is stable and requirement has been fulfilled to allow switch state
+
+            
         
-        if(self.change_state_enabler == True):
-            if(all(item1 == self.sensor0_trig_states[0] for item1 in self.sensor0_trig_states) and all(item2 == self.sensor1_trig_states[0] for item2 in self.sensor1_trig_states)):
-                print(self.sensor0_trig_states)
-                print(self.sensor1_trig_states)
-                self.current_state.change_state(timestamp)
-        
-        if(self.sensor_sample_counter >= (self.number_of_sensors * self.num_positive_trig_threshold)):  # check if all sensors have populated list with 
-            self.sensor_sample_counter = 0      # reset index to enable fifo system
-            self.change_state_enabler = True    # buffer has been filled up then enable change of state
             
             
 
@@ -245,12 +215,16 @@ def main():
     num_negative_trig_threshold = 5
     #time_diff_threshold = 0.2
     
-    sensors = np.array([IrSensor(sensor_id) for sensor_id in range(number_of_sensors)])     # create the rows in matrix that represents each of the sensors
+    sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
-    #visitor_counter = VisitorCounter(sensors, sensor_handler, num_trig_threshold, num_false_trig_threshold, time_diff_threshold)
-    #visitor_counter = VisitorCounter(sensors, sensor_handler, num_positive_trig_threshold, num_negative_trig_threshold)
-    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_trig_threshold, num_positive_trig_threshold, num_negative_trig_threshold)
+    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_handler, num_positive_trig_threshold, num_negative_trig_threshold)
+    
+    print("--before--")
+    for i in range(max_samples):
+        for j in range(number_of_sensors):
+            print("[{:d}][{:d}] {:d} : {:d} : {:s}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp, sensor_handler.get_sample(j, i).trig_state.name))
+    print("-----")
     
     #while(True):
     for _ in range(15):
@@ -258,15 +232,16 @@ def main():
             #sensor_handle.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
             sensor_handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
 
-            sensor_sample = sensor_handler.get_sample(sensor_id, 0)  # fetch current sensor readouts only
-            sensor_state_manager.set_current_sensor_trig_state(sensor_sample.value, sensor_sample.timestamp)
-            
-        print("current_readout_index:", current_readout_index)
-            
+            # sensor_sample = sensor_handler.get_sample(sensor_id, 0)  # fetch current sensor readouts only
+            # sensor_state_manager.evaluate_sensor_trig_states(sensor_sample.value, sensor_sample.timestamp)
         
+        print("current_readout_index:", current_readout_index)
+        sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
+            
+
         if(current_readout_index == 3):
-            print("sensor: 0; index: 3; value: {:d}; time: {:d}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp))
-            print("sensor: 1; index: 3; value: {:d}; time: {:d}".format(sensor_handler.get_sample(1, 3).value, sensor_handler.get_sample(1, 3).timestamp))
+            print("sensor: 0; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp, sensor_handler.get_sample(0, 3).trig_state.name))
+            print("sensor: 1; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(1, 3).value, sensor_handler.get_sample(1, 3).timestamp, sensor_handler.get_sample(1, 3).trig_state.name))
         
         current_readout_index += 1  # increase index to where store sensor readouts in the buffer
         
@@ -275,10 +250,10 @@ def main():
         
         time.sleep(1/readout_frequency) # setting periodic time for sensor readout
         
-    print("-----")
+    print("--after--")
     for i in range(max_samples):
         for j in range(number_of_sensors):
-            print("[{:d}][{:d}] {:d} : {:d}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp))
+            print("[{:d}][{:d}] {:d} : {:d} : {:s}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp, sensor_handler.get_sample(j, i).trig_state.name))
     print("-----")
     
     test = sensor_handler.get_sensor_logs()
