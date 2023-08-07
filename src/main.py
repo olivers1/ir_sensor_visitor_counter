@@ -102,12 +102,12 @@ class SensorState(ABC):
 class Idle(SensorState):
     def __init__(self, timestamp: int):
         self.last_updated = timestamp
-        
-    def change_state(self, timestamp: int):
-        print("hello world!")
+    
+    def change_state(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, timestamp: int, trig_states_are_same: bool):
+        print("in Idle")
     
     def reset_state(self):
-        print("hello initstate")
+        pass
 
 
 class Exit_0():
@@ -126,13 +126,42 @@ class SensorStateManager:
         self.sensor_handler = sensor_handler
         self.num_positive_trig_threshold = num_positive_trig_threshold
         self.num_negative_trig_threshold = num_negative_trig_threshold
-        
-        self.change_state_enabler = False
+        self.sensor0_trig_states = []
+        self.sensor1_trig_states = []
+        self.change_state_enabled = False   # enabler to only start evaluate sensor trig states after a specified number of sensor readouts has been done
         
     def evaluate_sensor_trig_states(self, current_index: int):
-        for current_index in range(current_index, current_index - self.num_positive_trig_threshold, -1):   # check a number of latest consecutive sensor trig status readouts (number specified by num_positive_trig_threshold) individually, for each sensor have the same trig status
-            for j in range(self.number_of_sensors):
-                print("[{:d}][{:d}[{:s}]".format(j, current_index, self.sensor_handler.get_sample(j, current_index).trig_state.name))
+        trig_states_are_same = False
+        if(current_index >= self.num_positive_trig_threshold):  # enable state change after a specified number of sensor readouts
+            self.change_state_enabled = True
+        
+        if self.change_state_enabled:  # evaluate trig states for each sensor when state change is allowed
+            for current_index in range(current_index, current_index - self.num_positive_trig_threshold, -1):   # check a number of latest consecutive sensor trig status readouts (number specified by num_positive_trig_threshold) individually, for each sensor have the same trig status
+                for j in range(self.number_of_sensors):
+                    #print("[{:d}][{:d}[{:s}]".format(j, current_index, self.sensor_handler.get_sample(j, current_index).trig_state.name))
+                    if(j == 0): # sensor0
+                        self.sensor0_trig_states.insert(0, self.sensor_handler.get_sample(j, current_index).trig_state.name)    # add sensor0's trig status to list
+                        print("sensor0_trig_states:", self.sensor0_trig_states)
+                        if(len(self.sensor0_trig_states) >= self.num_positive_trig_threshold):  # keep FIFO list with size of trigs required to change state (self.num_positive_trig_threshold)
+                            self.sensor0_trig_states.pop()
+                    elif(j == 1):   # sensor1
+                        self.sensor1_trig_states.insert(0, self.sensor_handler.get_sample(j, current_index).trig_state.name)    # add sensor1's trig status to list
+                        print("sensor1_trig_states:", self.sensor1_trig_states)
+                        if(len(self.sensor1_trig_states) >= self.num_positive_trig_threshold):  # keep FIFO list with size of trigs required to change state (self.num_positive_trig_threshold)
+                            self.sensor1_trig_states.pop()
+        
+            # evaluate if last number of trig states stored in a separate list for each sensor have the same values
+            if all(x == self.sensor0_trig_states[0] for x in self.sensor0_trig_states) and all(y == self.sensor1_trig_states[0] for y in self.sensor1_trig_states):
+                print("ready to change state")
+                trig_states_are_same = True
+                self.current_state.change_state(self.sensor0_trig_states[0], self.sensor1_trig_states[0], self.sensor_handler.get_sample(0, current_index).timestamp, trig_states_are_same)
+            else:
+                print("NOT ready to change state")
+                trig_states_are_same = False
+                self.current_state.change_state(self.sensor0_trig_states[0], self.sensor1_trig_states[0], self.sensor_handler.get_sample(0, current_index).timestamp, trig_states_are_same)
+            
+                # provide the state itself with trig_state, timestamp and flag telling if sensor trig states were same for all trigs. then the state itself will handle to which state it will change to based on that
+
                 # store trig_states in two separate lists (one for each sensor) and run below code to check if all trig values in each list are the same
                 # add enabler to only check the lists current_index is larger than than num_positive_trig_threshold
                 # if(self.change_state_enabler == True):
@@ -140,11 +169,6 @@ class SensorStateManager:
                 #         print(self.sensor0_trig_states)
                 #         print(self.sensor1_trig_states)
                 #         self.current_state.change_state(timestamp)
-                
-                
-        # write code here to compare check if each individual sensor has num_positive_trig_threshold consecutive same values this means the sensor is stable and requirement has been fulfilled to allow switch state
-        
-            
         
             
             
