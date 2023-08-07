@@ -119,7 +119,7 @@ class Entry_0():
 
 
 class SensorStateManager:
-    current_state: SensorState = Idle
+    current_state: SensorState = Idle(0)
     
     def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_positive_trig_threshold: int, num_negative_trig_threshold: int):
         self.number_of_sensors = number_of_sensors
