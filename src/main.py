@@ -129,9 +129,10 @@ class SensorStateManager:
         self.sensor0_trig_states = []
         self.sensor1_trig_states = []
         self.change_state_enabled = False   # enabler to only start evaluate sensor trig states after a specified number of sensor readouts has been done
+        self.init_idle_state_enabled = True
         
     def evaluate_sensor_trig_states(self, current_index: int):
-        trig_states_are_same = False
+        trig_states_are_same = False    # boolean returned to state as a validator if current trig state can be trusted (same trig state for a consecutive number of times) which the state in its turn uses to act which state to transfer to 
         if(current_index >= self.num_positive_trig_threshold):  # enable state change after a specified number of sensor readouts
             self.change_state_enabled = True
         
@@ -150,11 +151,17 @@ class SensorStateManager:
                         if(len(self.sensor1_trig_states) >= self.num_positive_trig_threshold):  # keep FIFO list with size of trigs required to change state (self.num_positive_trig_threshold)
                             self.sensor1_trig_states.pop()
         
-            # evaluate if last number of trig states stored in a separate list for each sensor have the same values
-            if all(x == self.sensor0_trig_states[0] for x in self.sensor0_trig_states) and all(y == self.sensor1_trig_states[0] for y in self.sensor1_trig_states):
+            # evaluate if last number of trig states stored in a separate list for each sensor have the same values  
+            if all(x == self.sensor0_trig_states[0] for x in self.sensor0_trig_states) and all(y == self.sensor1_trig_states[0] for y in self.sensor1_trig_states) and self.sensor0_trig_states[0]:
                 print("ready to change state")
                 trig_states_are_same = True
-                self.current_state.change_state(self.sensor0_trig_states[0], self.sensor1_trig_states[0], self.sensor_handler.get_sample(0, current_index).timestamp, trig_states_are_same)
+                if self.init_idle_state_enabled:    # check if program runs first time when no state has been assigned 
+                    if self.sensor0_trig_states[0] == SensorTrigState.NO_TRIG and self.sensor1_trig_states[0] == SensorTrigState.NO_TRIG:   # check if both sensors are in NO_TRIG state, to prevent changing to Idle if any of the sensors are blocked (in TRIG state) 
+                        self.init_idle_state_enabled = False    # initialization phase passed
+                        self.current_state.change_state(self.sensor0_trig_states[0], self.sensor1_trig_states[0], self.sensor_handler.get_sample(0, current_index).timestamp, trig_states_are_same)
+                else:
+                    self.current_state.change_state(self.sensor0_trig_states[0], self.sensor1_trig_states[0], self.sensor_handler.get_sample(0, current_index).timestamp, trig_states_are_same)
+            
             else:
                 print("NOT ready to change state")
                 trig_states_are_same = False
