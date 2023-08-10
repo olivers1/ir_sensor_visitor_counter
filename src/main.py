@@ -118,25 +118,27 @@ class SensorStateManager:
         #for i in range(self.num_consecutive_trigs):   # use current sensor readout index get latest sensor trig state as well as a number of previous readouts specified by num_consecutive_trigs variable
         for sensor_id in range(self.number_of_sensors):
             self.sensor_trig_states[sensor_id][self.sample_counter] = self.sensor_handler.get_sample(sensor_id, current_readout_index).trig_state.name
+        # print("sensor_logs sensor0:", self.sensor_trig_states[0][self.sample_counter])
+        # print("sensor_logs sensor1:", self.sensor_trig_states[1][self.sample_counter])
+        print("sample_counter:", self.sample_counter)
+        print(self.sensor_trig_states)
         self.sample_counter += 1
         if self.sample_counter >= self.num_consecutive_trigs:   # keep sensor_trig_states buffer at fixed size
             self.sample_counter = 0
-        #print(self.sensor_trig_states)
     
     def verify_sensor_trig_continuity(self):
-        print(self.sensor_trig_states)
-        verified_trig_states = []
+        verified_trig_states = []   # list containing the verified trig states for sensor_id identified by its index in list
         for sensor_id in range(self.number_of_sensors):
-            #================================================
-            # ==-THIS PART DOES NOT WORK-==
-            # it does not always say UNKNOWN even though all trig_states do NOT have same value
-            # comparison may not work properly?
-            #================================================
-            if self.sensor_trig_states[sensor_id][0] == self.sensor_trig_states[sensor_id].all():
-                verified_trig_states.append(self.sensor_trig_states[sensor_id][4])
+            ref_item = self.sensor_trig_states[sensor_id][0]    # reference value to compare with the other list items
+            all_elements_are_same = True
+            for item in self.sensor_trig_states[sensor_id]:
+                if ref_item != item:
+                    all_elements_are_same = False
+                    
+            if all_elements_are_same:   
+                verified_trig_states.append(self.sensor_trig_states[sensor_id][0])  # if alla items are same add that sensor trig state
             else:
-                verified_trig_states.append(SensorTrigState.UNKNOWN.name)
-        return verified_trig_states
+                verified_trig_states.append(SensorTrigState.UNKNOWN.name)   # if not all items are same add 'UNKNOWN' trig state to list
                 
     #def change_state(self):
     #    pass
@@ -198,7 +200,7 @@ class SensorStateManager:
         
         if self.change_state_is_allowed:    # enough number of sensor sample readouts performed to be able evalute sensor trig states
             verified_sensor_states = self.verify_sensor_trig_continuity()
-            print(verified_sensor_states)
+            print( verified_sensor_states)
             self.detect_motion_direction(verified_sensor_states)
        
 
@@ -227,7 +229,6 @@ def main():
     #while(True):
     for _ in range(15):
         for sensor_id, sensor in enumerate(sensors):
-            #sensor_handle.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())
             sensor_handler.register_sample(sensor_id, current_readout_index, *sensor.get_sensor_data())    # '*' unpacks the return tuple from function call
 
             # sensor_sample = sensor_handler.get_sample(sensor_id, 0)  # fetch current sensor readouts only
