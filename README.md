@@ -13,7 +13,7 @@ select 'Interface Options'
 SSH -> enable
 SPI -> enable
 
-change keyboard layout
+-change keyboard layout
 in GUI click:
 Preferences/'Keyboard and Mouse'/Keyboar/'Keyboard Layout'
 
@@ -27,7 +27,7 @@ static ip_address=STATIC_IP/24
 static routers=ROUTER_IP 
 static domain_name_servers=DNS_IP
 
-Example:
+example:
 interface wlan0
 static ip_address=192.168.1.120/24
 static routers=192.168.1.254
