@@ -102,7 +102,6 @@ class MotionDetectionState(Enum):
     ENTRY_C = 8
     ENTRY_COMPLETE = 9
 
-
 class SensorStateManager:
     current_state = MotionDetectionState.INIT
     
@@ -116,43 +115,43 @@ class SensorStateManager:
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.state_change_timestamp = 0
         #self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
-        self.transition_table = self.get_transition_table  # key values may be assigned to an enum with enum members assigned the unique result (int) that represent the different states
+        self.transition_table = self.get_transition_table()  # key values may be assigned to an enum with enum members assigned the unique result (int) that represent the different states
         
-    def get_transition_table_keys(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, change_from_state: MotionDetectionState, change_to_state: MotionDetectionState):
-            # formula used to calculate current state value
-            #sum = self.sensor_handler.get_sample(sensor0, self.sample_counter).trig_state.value + self.sensor1_trig_state.get_sample(sensor1, self.sample_counter).trig_state.value * 10 + self.current_state.MotionDetectionState.value * 100 + succeeding_state.MotionDetectionState.value * 1000
+    def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, change_from_state: MotionDetectionState, change_to_state: MotionDetectionState):
+            # calculate an unique number based on current state parameters
             sum = sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + change_from_state.value *100 + change_to_state.value *1000
             return sum
         
     def get_transition_table(self):
-        num_transition_table_parameters = len(signature(self.get_transition_table_keys).parameters)
-        transitions = [
+        transition_states = [
+            # sensor0_trig_state.value, sensor1_trig_state.value, current_state.value, succeeding_state.value
+            # INIT
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.INIT, MotionDetectionState.IDLE,
-            
+            # EXIT
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.IDLE, MotionDetectionState.EXIT_A,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_COMPLETE,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
+            # ENTRY
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.IDLE, MotionDetectionState.ENTRY_A,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_B,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_C,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_COMPLETE,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE
         ]
         
-        # create numpy array to store the values for list and switch row and perform function call
-        for _ in range(len(num_transition_table_parameters) / num_transition_table_parameters):
-            for _ in range(num_transition_table_parameters):  # get number of parameters of a fucntion and use input to switch row in array
-                pass
+        transition_keys = []    # stores the keys for the unique states that will be used to create a transition table dictionary
+        transition_values = []  # stores the values for succeeding state change after current state
+        transition_table = {}
+        num_transition_table_parameters = len(signature(self.get_transition_key).parameters)    # number of parameters the function takes to use as step in for loop
+        for i in range(0, len(transition_states), num_transition_table_parameters):
+            arguments = transition_states[i:i + num_transition_table_parameters]
+            transition_keys.append(self.get_transition_key(*arguments))     # split list into its items to be used as arguments for function call
+            transition_values.append(MotionDetectionState(arguments[-1]))   # extract last item in sliced list which contains the succeeding state change after current state
         
-        
-            
-            
-        for _ in range(5):   # for number of possible combinations append list and/or number of possible state transitions (forward + backward). key and value list must be aligned with indexes
-            transition_keys = self.get_transition_table_keys(*transitions)    # unique state sum will be the keys of transition table dictionary
-            transition_values = MotionDetectionState.IDLE
-        
-            for key, value in zip(transition_keys, transition_values):  # populate dictionary
-                transition_table[key] = value
-            
-            
-        
-        
-        transition_table = {
-            # INIT
-            
-        }
+        for key, value in zip(transition_keys, transition_values):  # populate dictionary
+            transition_table[key] = value
         return transition_table
 
     def import_sensor_trig_states(self, current_readout_index: int):
@@ -166,7 +165,6 @@ class SensorStateManager:
         self.sample_counter += 1
         print("sample_counter:", self.sample_counter)
         #print(self.sensor_trig_states)
-    
     
     def verify_sensor_trig_continuity(self):
         verified_trig_states = []   # list containing the verified trig states for sensor_id identified by its index in list
@@ -185,6 +183,11 @@ class SensorStateManager:
         
     def detect_motion_direction(self, sensor_states, current_readout_index):
         previous_state = self.current_state
+        
+        # formula used to calculate current state value
+        # sum = self.sensor_handler.get_sample(sensor0, self.sample_counter).trig_state.value + self.sensor1_trig_state.get_sample(sensor1, self.sample_counter).trig_state.value * 10 + self.current_state.MotionDetectionState.value * 100 + succeeding_state.MotionDetectionState.value * 1000
+        # investigate how change state from ENTRY_COMPLETE / EXIT_COMPLETE to IDLE even though sensor trig_state remains same
+        
         """
         # identify the sensor verified trig states to decide which state to change
         if sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:   # check if both sensors are in verified NO_TRIG state
@@ -369,7 +372,7 @@ def main():
     # print(type(sensor_logs))
     print(sensor_logs.shape)
     # print(sensor_logs)
-    
+
     
         
 if __name__ == "__main__":
