@@ -110,42 +110,64 @@ class SensorStateManager:
         self.sensor_handler = sensor_handler
         self.num_consecutive_trigs = num_consecutive_trigs
         self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
+        #self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
         self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.state_change_timestamp = 0
-        #self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
-        self.transition_table = self.get_transition_table()  # key values may be assigned to an enum with enum members assigned the unique result (int) that represent the different states
+        self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
         
-    def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, change_from_state: MotionDetectionState, change_to_state: MotionDetectionState):
+    def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
-            sum = sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + change_from_state.value *100 + change_to_state.value *1000
+            sum = sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + current_state.value *100 + change_to_state.value *0  # succeeding state used here for covenience only to create the transition dictionary from one list
             return sum
         
-    def get_transition_table(self):
+    def get_transition_dict(self):
         transition_states = [
             # sensor0_trig_state.value, sensor1_trig_state.value, current_state.value, succeeding_state.value
             # INIT
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.INIT, MotionDetectionState.IDLE,
-            # EXIT
+            
+            # IDLE
+            # -EXIT
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.IDLE, MotionDetectionState.EXIT_A,
-            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
-            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
-            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_COMPLETE,
-            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
-            # ENTRY
+            # -ENTRY
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.IDLE, MotionDetectionState.ENTRY_A,
+            
+            # EXIT
+            # -EXIT_A
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,   # THIS ONE MAY BE BLOCKING PROGRAM FROM ENTERING ENTRY_A SINCE UNIQUE KEYS ALLOWED
+            # -EXIT_B
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_A,
+            # -EXIT_C
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_COMPLETE,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_B,
+            # -EXIT_COMPLETE
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
+            
+            # ENTRY
+            # -ENTRY_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_B,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,   # THIS ONE MAY BE BLOCKING PROGRAM FROM ENTERING ENTRY_A SINCE UNIQUE KEYS ALLOWED
+            # -ENTRY_B
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_C,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_A,
+            # -ENTRY_C
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_COMPLETE,
-            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_B,
+            # -ENTRY_COMPLETE
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.IDLE,
         ]
         
         transition_keys = []    # stores the keys for the unique states that will be used to create a transition table dictionary
         transition_values = []  # stores the values for succeeding state change after current state
         transition_table = {}
         num_transition_table_parameters = len(signature(self.get_transition_key).parameters)    # number of parameters the function takes to use as step in for loop
-        for i in range(0, len(transition_states), num_transition_table_parameters):
+        for i in range(0, len(transition_states), num_transition_table_parameters):     # loop through list containing all allowed transitions
             arguments = transition_states[i:i + num_transition_table_parameters]
             transition_keys.append(self.get_transition_key(*arguments))     # split list into its items to be used as arguments for function call
             transition_values.append(MotionDetectionState(arguments[-1]))   # extract last item in sliced list which contains the succeeding state change after current state
@@ -183,120 +205,34 @@ class SensorStateManager:
         
     def detect_motion_direction(self, sensor_states, current_readout_index):
         previous_state = self.current_state
+        # === CONTINUE TO CODE HERE !!!!!!!!!!!!!
+        # CREATE A LINKED LIST OR SOMETHING WITH THE PREFERRED STATE CHANGES, IF THE PERFORMED STATE CHANGE THAT JUST TOOK PLACE
+        # DIFFERS FROM PREFERRED STATE CHANGE INCREASE THE elf.unwanted_state_change_counter THIS LIST WILL BE SEPARATED FROM 
+        # TRANSITION DICTIONARY
         
+        # calculate unique value based on current state and sensor trig states were program is executing at now
         # formula used to calculate current state value
-        # sum = self.sensor_handler.get_sample(sensor0, self.sample_counter).trig_state.value + self.sensor1_trig_state.get_sample(sensor1, self.sample_counter).trig_state.value * 10 + self.current_state.MotionDetectionState.value * 100 + succeeding_state.MotionDetectionState.value * 1000
-        # investigate how change state from ENTRY_COMPLETE / EXIT_COMPLETE to IDLE even though sensor trig_state remains same
+        # sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + self.current_state *100
+        current_state_sum = 0
+        for sensor_id in range(self.number_of_sensors):
+            current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value
         
-        """
-        # identify the sensor verified trig states to decide which state to change
-        if sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:   # check if both sensors are in verified NO_TRIG state
-            if self.current_state == MotionDetectionState.INIT:
-                self.current_state = MotionDetectionState.IDLE
-            elif self.current_state == MotionDetectionState.IDLE:
-                self.current_state = MotionDetectionState.IDLE      # remain in same state if same trig pattern keeps repeating
-            elif self.current_state == MotionDetectionState.EXIT_C:
-                self.current_state = MotionDetectionState.EXIT_COMPLETE
-            elif self.current_state == MotionDetectionState.ENTRY_C:
-                self.current_state = MotionDetectionState.ENTRY_COMPLETE
-            elif self.current_state == MotionDetectionState.EXIT_COMPLETE or self.current_state == MotionDetectionState.ENTRY_COMPLETE:
-                self.current_state = MotionDetectionState.IDLE
-            elif self.current_state == MotionDetectionState.EXIT_A:
-                self.current_state = MotionDetectionState.IDLE
-            elif self.current_state == MotionDetectionState.ENTRY_A:
-                self.current_state = MotionDetectionState.IDLE
-                
-        elif self.current_state == MotionDetectionState.IDLE:
-            if sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_A
-            elif sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_A
+        current_state_sum += self.current_state.value * 100     # total value of current state sum
+        # check if state exists and change state to the succeeding state
+        succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
         
-        elif self.current_state == MotionDetectionState.EXIT_A:
-            if sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_B
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_A    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter = 0
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
-                
-        elif self.current_state == MotionDetectionState.EXIT_B:
-            if sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_C
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_B    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter = 0
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
+        try:
+            self.current_state = MotionDetectionState(succeeding_state_value)   # change state
+        except ValueError:
+            print("{} is not a valid MotionDetectionState".format(succeeding_state_value))
         
-        elif self.current_state == MotionDetectionState.EXIT_C:
-            if sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_C
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.EXIT_B    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter += 1
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
-        
-        elif self.current_state == MotionDetectionState.ENTRY_A:
-            if sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_B
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.NO_TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_A    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter = 0
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
-        
-        elif self.current_state == MotionDetectionState.ENTRY_B:
-            if sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_C
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_B    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter = 0
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
-        
-        elif self.current_state == MotionDetectionState.ENTRY_C:
-            if sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.NO_TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_C
-                self.unwanted_state_change_counter = 0
-            elif sensor_states[0] == SensorTrigState.TRIG.name and sensor_states[1] == SensorTrigState.TRIG.name:
-                self.current_state = MotionDetectionState.ENTRY_B    # remain in same state if same trig pattern keeps repeating
-                self.unwanted_state_change_counter += 1
-            else:
-                self.unwanted_state_change_counter += 1
-                if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
-                    self.current_state = MotionDetectionState.INIT
-        
-        if self.current_state == MotionDetectionState.INIT:
-            self.unwanted_state_change_counter = 0
-            
-        print("current_state:", self.current_state.name)
-        print("unwanted_state_change_counter:", self.unwanted_state_change_counter)
-        
-        # check if a state change was performed, if yes get the timestamp from the last sensor readout and return along with current state. this also makes sure state can't be changed before an additional full stable trig state session is verified
+        # if a state change was performed get the timestamp from the last sensor readout and return along with current state. this also makes sure state can't be changed before an additional full stable trig state session is verified
         if previous_state != self.current_state:
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get latest sensor timestamp to use for setting a the timestamp for state change
         else:
             timestamp = 0   # state was not changed
         return self.current_state.name, timestamp
-        """
+        
     
     def evaluate_sensor_trig_states(self, current_readout_index: int):
         self.import_sensor_trig_states(current_readout_index)
