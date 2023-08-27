@@ -138,7 +138,7 @@ class SensorStateManager:
             # -EXIT_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
-            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,   # THIS ONE MAY BE BLOCKING PROGRAM FROM ENTERING ENTRY_A SINCE UNIQUE KEYS ALLOWED
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
             # -EXIT_B
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_A,
@@ -152,7 +152,7 @@ class SensorStateManager:
             # -ENTRY_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_B,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
-            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,   # THIS ONE MAY BE BLOCKING PROGRAM FROM ENTERING ENTRY_A SINCE UNIQUE KEYS ALLOWED
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
             # -ENTRY_B
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_C,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_A,
@@ -207,7 +207,7 @@ class SensorStateManager:
         previous_state = self.current_state
         # === CONTINUE TO CODE HERE !!!!!!!!!!!!!
         # CREATE A LINKED LIST OR SOMETHING WITH THE PREFERRED STATE CHANGES, IF THE PERFORMED STATE CHANGE THAT JUST TOOK PLACE
-        # DIFFERS FROM PREFERRED STATE CHANGE INCREASE THE elf.unwanted_state_change_counter THIS LIST WILL BE SEPARATED FROM 
+        # DIFFERS FROM PREFERRED STATE CHANGE INCREASE THE self.unwanted_state_change_counter THIS LIST WILL BE SEPARATED FROM 
         # TRANSITION DICTIONARY
         
         # calculate unique value based on current state and sensor trig states were program is executing at now
