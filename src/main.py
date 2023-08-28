@@ -103,14 +103,15 @@ class MotionDetectionState(Enum):
     ENTRY_COMPLETE = 9
 
 class SensorStateManager:
-    current_state = MotionDetectionState.INIT
-    
+    current_state = MotionDetectionState.INIT   # hold current state
+    succeeding_state = MotionDetectionState.IDLE    # next state to which the program will transition to based on current sensor trig states
+   
     def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int):
         self.number_of_sensors = number_of_sensors
         self.sensor_handler = sensor_handler
         self.num_consecutive_trigs = num_consecutive_trigs
         self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
-        #self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
+        self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
         self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
@@ -129,6 +130,7 @@ class SensorStateManager:
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.INIT, MotionDetectionState.IDLE,
             
             # IDLE
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.IDLE, MotionDetectionState.IDLE,     # allow stay in current state with sensors at same trig states that got the program to the state
             # -EXIT
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.IDLE, MotionDetectionState.EXIT_A,
             # -ENTRY
@@ -137,13 +139,17 @@ class SensorStateManager:
             # EXIT
             # -EXIT_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_A,    # allow stay in same state
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
             # -EXIT_B
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_B,       # allow stay in same state
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_C,
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_A,
             # -EXIT_C
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_COMPLETE,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_C,    # allow stay in same state
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_B,
             # -EXIT_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
@@ -151,13 +157,16 @@ class SensorStateManager:
             # ENTRY
             # -ENTRY_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_B,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_A,  # allow stay in same state
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
             # -ENTRY_B
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_C,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_B,     # allow stay in same state
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_A,
             # -ENTRY_C
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_COMPLETE,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_C,  # allow stay in same state
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_B,
             # -ENTRY_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.IDLE,
@@ -181,11 +190,12 @@ class SensorStateManager:
         for sensor_id in range(self.number_of_sensors):
             self.sensor_trig_states[sensor_id][self.sample_counter] = self.sensor_handler.get_sample(sensor_id, current_readout_index).trig_state
         
-        # keep sensor_trig_states buffer at fixed size
-        if self.sample_counter >= self.num_consecutive_trigs - 1:   
-            self.sample_counter = 0
         self.sample_counter += 1
         print("sample_counter:", self.sample_counter)
+        # keep sensor_trig_states buffer at fixed size
+        if self.sample_counter >= self.num_consecutive_trigs:   
+            self.sample_counter = 0
+        
         #print(self.sensor_trig_states)
     
     def verify_sensor_trig_continuity(self):
@@ -196,7 +206,7 @@ class SensorStateManager:
             for item in self.sensor_trig_states[sensor_id]:
                 if ref_item != item:
                     all_elements_are_same = False   # set boolean to False if any of the trig_states in the list deviates from the other
-                    
+                    break
             if all_elements_are_same:   
                 verified_trig_states.append(self.sensor_trig_states[sensor_id][0])  # if alla items are same add that sensor trig state
             else:
@@ -204,12 +214,6 @@ class SensorStateManager:
         return verified_trig_states
         
     def detect_motion_direction(self, sensor_states, current_readout_index):
-        previous_state = self.current_state
-        # === CONTINUE TO CODE HERE !!!!!!!!!!!!!
-        # CREATE A LINKED LIST OR SOMETHING WITH THE PREFERRED STATE CHANGES, IF THE PERFORMED STATE CHANGE THAT JUST TOOK PLACE
-        # DIFFERS FROM PREFERRED STATE CHANGE INCREASE THE self.unwanted_state_change_counter THIS LIST WILL BE SEPARATED FROM 
-        # TRANSITION DICTIONARY
-        
         # calculate unique value based on current state and sensor trig states were program is executing at now
         # formula used to calculate current state value
         # sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + self.current_state *100
@@ -218,19 +222,29 @@ class SensorStateManager:
             current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value
         
         current_state_sum += self.current_state.value * 100     # total value of current state sum
+        print("current_state_sum:", current_state_sum)
         # check if state exists and change state to the succeeding state
         succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
         
-        try:
-            self.current_state = MotionDetectionState(succeeding_state_value)   # change state
-        except ValueError:
-            print("{} is not a valid MotionDetectionState".format(succeeding_state_value))
+        # SOLVE HOW TO HANDLE SITUATION WHEN SENSOR TRIG STATES REMAIN SAME AFTER A STATE CHANGE
+        self.succeeding_state = MotionDetectionState(succeeding_state_value)
         
-        # if a state change was performed get the timestamp from the last sensor readout and return along with current state. this also makes sure state can't be changed before an additional full stable trig state session is verified
-        if previous_state != self.current_state:
-            timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get latest sensor timestamp to use for setting a the timestamp for state change
-        else:
-            timestamp = 0   # state was not changed
+        timestamp = 0   # holds the timestamp when a state change occured
+        # if succeeding_state_value != MotionDetectionState.IDLE:
+        if self.succeeding_state.value > self.current_state.value:   # identify state change direction (moving direction) by its enum values
+            self.current_state = MotionDetectionState(succeeding_state_value)   # change state
+            timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
+        elif self.succeeding_state.value < self.current_state.value:
+            if succeeding_state_value != MotionDetectionState.IDLE.value:
+                self.unwanted_state_change_counter += 1     # increase counter
+            else:
+                self.current_state = MotionDetectionState(succeeding_state_value)   # change state, complete motion captured back to IDLE state
+                timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
+        
+        # if a certain number of unwanted state changes reached change to previous state (go backward by one state)
+        if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
+            self.current_state = MotionDetectionState(self.current_state.value - 1)   # number of unwanted trig states reached, change to previous state 
+             
         return self.current_state.name, timestamp
         
     
@@ -249,7 +263,7 @@ class SensorStateManager:
             for sensor_state in verified_sensor_states:
                 if(sensor_state) == SensorTrigState.UNKNOWN:
                     sensor_states_are_stable = False
-            
+                    break
             if sensor_states_are_stable:
                 state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
                 print(state_change)
@@ -260,7 +274,7 @@ def main():
     number_of_sensors = 2
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
-    readout_frequency = 10  # Hz
+    readout_frequency = 2  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 2
     #time_diff_threshold = 0.2
