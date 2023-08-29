@@ -144,17 +144,18 @@ class SensorStateManager:
             # -EXIT_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_B,
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.EXIT_A,    # allow stay in same state
-            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_A, MotionDetectionState.IDLE,
             # -EXIT_B
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_C,
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_B,       # allow stay in same state
-            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_C,
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_A,
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_B, MotionDetectionState.EXIT_A,
             # -EXIT_C
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_COMPLETE,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_C,    # allow stay in same state
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_B,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_B,
             # -EXIT_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
             
@@ -162,16 +163,18 @@ class SensorStateManager:
             # -ENTRY_A
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_B,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.ENTRY_A,  # allow stay in same state
-            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_A, MotionDetectionState.IDLE,
             # -ENTRY_B
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_C,
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_B,     # allow stay in same state
+            SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_A,
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_B, MotionDetectionState.ENTRY_A,
             # -ENTRY_C
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_COMPLETE,
             SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_C,  # allow stay in same state
             SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_B,
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_B,
             # -ENTRY_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.IDLE,
         ]
@@ -230,9 +233,8 @@ class SensorStateManager:
         
         current_state_sum += self.current_state.value * 100     # add current state value to sum
         print("current_state_sum:", current_state_sum)
-        # check if state exists and change state to the succeeding state
+        # check if state current state sum exists in dictionary and add succeeding state to variable
         succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
-        
         self.succeeding_state = MotionDetectionState(succeeding_state_value)
         
         timestamp = 0   # holds the timestamp when a state change occured
@@ -240,7 +242,7 @@ class SensorStateManager:
             self.current_state = self.succeeding_state      # change state
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
         elif self.succeeding_state.value < self.current_state.value:
-            if self.succeeding_state.value != MotionDetectionState.IDLE.value:  # IDLE is the base state to which program returns after any full motion is detected, any unwanted trig states in IDLE will not increase unwanted state change counter
+            if self.succeeding_state.value != MotionDetectionState.IDLE.value:  # this will handle the transition from EXIT_COMPLETE and ENTRY_COMPLETE to IDLE state
                 self.unwanted_state_change_counter += 1     # increase counter
             else:
                 self.current_state = self.succeeding_state      # change state, complete motion captured back to IDLE state
@@ -251,7 +253,10 @@ class SensorStateManager:
             self.unwanted_state_change_counter = 0      # reset counter
             self.current_state = MotionDetectionState(self.current_state.value - 1)   # number of unwanted trig states reached, change to previous state 
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
-            
+        
+        if self.current_state == MotionDetectionState.IDLE:
+            self.unwanted_state_change_counter = 0      # reset counter. IDLE is the base state, after INIT is fulfilled once it will never go back to this state
+         
         return self.current_state.name, timestamp
         
     
