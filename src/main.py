@@ -120,7 +120,7 @@ class SensorStateManager:
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
-            sum = sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + current_state.value *100 + change_to_state.value *0  # succeeding state used here for covenience only to create the transition dictionary from one list
+            sum = sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + current_state.value *100 + change_to_state.value *0  # succeeding state used for covenience only to create the transition dictionary from same list
             return sum
         
     def get_transition_dict(self):
@@ -202,7 +202,6 @@ class SensorStateManager:
         # keep sensor_trig_states buffer at fixed size
         if self.sample_counter >= self.num_consecutive_trigs:   
             self.sample_counter = 0
-        
         #print(self.sensor_trig_states)
     
     def verify_sensor_trig_continuity(self):
@@ -237,12 +236,16 @@ class SensorStateManager:
         succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
         self.succeeding_state = MotionDetectionState(succeeding_state_value)
         
+        if self.succeeding_state != self.current_state:     # check if a state change will be performed
+            self.sensor_trig_states.fill(0)     # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
+        
+        # perform state change and add timestamp when state is changed
         timestamp = 0   # holds the timestamp when a state change occured
         if self.succeeding_state.value > self.current_state.value:   # identify state change direction (moving direction) by its enum values
             self.current_state = self.succeeding_state      # change state
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
         elif self.succeeding_state.value < self.current_state.value:
-            if self.succeeding_state.value != MotionDetectionState.IDLE.value:  # this will handle the transition from EXIT_COMPLETE and ENTRY_COMPLETE to IDLE state
+            if self.succeeding_state != MotionDetectionState.IDLE:  # this will handle the transition from EXIT_COMPLETE and ENTRY_COMPLETE to IDLE state
                 self.unwanted_state_change_counter += 1     # increase counter
             else:
                 self.current_state = self.succeeding_state      # change state, complete motion captured back to IDLE state
@@ -253,7 +256,7 @@ class SensorStateManager:
             self.unwanted_state_change_counter = 0      # reset counter
             self.current_state = MotionDetectionState(self.current_state.value - 1)   # number of unwanted trig states reached, change to previous state 
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
-        
+            
         if self.current_state == MotionDetectionState.IDLE:
             self.unwanted_state_change_counter = 0      # reset counter. IDLE is the base state, after INIT is fulfilled once it will never go back to this state
          
@@ -286,7 +289,7 @@ def main():
     number_of_sensors = 2
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
-    readout_frequency = 2  # Hz
+    readout_frequency = 20  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 3
     #time_diff_threshold = 0.2
