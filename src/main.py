@@ -3,6 +3,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 from inspect import signature
 import datetime
+import pyrebase
 
 # Import SPI library (for hardware SPI) and MCP3008 library.
 import Adafruit_GPIO.SPI as SPI
@@ -10,9 +11,16 @@ import Adafruit_MCP3008
 import time
 import RPi.GPIO as GPIO
 
-# multiprocessing
-import multiprocessing
-GPIO.setwarnings(False)     # disable warnings
+
+# Setup firebase web tool to send data to it
+config = {
+    "apiKey" : "AIzaSyDtDgldsmoxUIWnouTqovdF9QkuPSGwFMY",
+    "authDomain" : "ir-sensor-cat-counter-monitor.firebaseapp.com",
+    "databaseURL" : "https://ir-sensor-cat-counter-monitor-default-rtdb.firebaseio.com/",
+    "storageBucket" : "ir-sensor-cat-counter-monitor.appspot.com"
+}
+firebase = pyrebase.initialize_app(config)
+db = firebase.database()
 
 # GPIO setup
 GPIO.setmode(GPIO.BOARD)
@@ -119,7 +127,7 @@ class SensorStateManager:
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.state_change_timestamp = 0
         self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
-        
+        self.state_change = None    # holds current state along with timestamp
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
@@ -161,6 +169,9 @@ class SensorStateManager:
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_C, MotionDetectionState.EXIT_B,
             # -EXIT_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.IDLE,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.EXIT_COMPLETE,  # allow stay in same state
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.EXIT_COMPLETE,  # allow stay in same state
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.EXIT_COMPLETE, MotionDetectionState.EXIT_COMPLETE,     # allow stay in same state
             
             # ENTRY
             # -ENTRY_A
@@ -180,6 +191,9 @@ class SensorStateManager:
             SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_C, MotionDetectionState.ENTRY_B,
             # -ENTRY_COMPLETE
             SensorTrigState.NO_TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.IDLE,
+            SensorTrigState.TRIG, SensorTrigState.NO_TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.ENTRY_COMPLETE,    # allow stay in same state
+            SensorTrigState.NO_TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.ENTRY_COMPLETE,    # allow stay in same state
+            SensorTrigState.TRIG, SensorTrigState.TRIG, MotionDetectionState.ENTRY_COMPLETE, MotionDetectionState.ENTRY_COMPLETE,       # allow stay in same state
         ]
         
         transition_keys = []    # stores the keys for the unique states that will be used to create a transition table dictionary
@@ -275,9 +289,10 @@ class SensorStateManager:
          
         return self.current_state.name, timestamp
     
-    def log_to_file(self, state_change):
-        # write to log file when every new state change occurs
+    def log_state_change(self, state_change):
+        # write to log at every state change instance only
         if state_change[1]  != 0:   # only write to file at the instance when state is changed
+            # write to local log file
             try:
                 with open(self.filename, 'a') as file:
                     try:
@@ -286,6 +301,15 @@ class SensorStateManager:
                         print("Error writing to file")
             except (FileNotFoundError, PermissionError, OSError):
                 print("Error opening file")
+            
+            # send data to firebase database
+            data = {
+            "Timestamp" : state_change[1],
+            "State" : state_change[0]
+            } 
+            db.child("Status").push(data)
+            db.update (data)
+            #print ("data sent to firebase")
     
     def evaluate_sensor_trig_states(self, current_readout_index: int):
         self.import_sensor_trig_states(current_readout_index)
@@ -304,12 +328,13 @@ class SensorStateManager:
                     sensor_states_are_stable = False
                     break
             if sensor_states_are_stable:
-                state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
+                self.state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
                 
                 # write to log file when every new state change occurs
-                self.log_to_file(state_change)
+                self.log_state_change(self.state_change)
+                #print(self.state_change)
                 
-                print(state_change)
+        return self.state_change
 
 
         
@@ -321,8 +346,7 @@ def main():
     readout_frequency = 30  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 3
-    log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y%m%d_[%H%M%S]")
-    print(log_file_name)
+    log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
     
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
@@ -344,7 +368,8 @@ def main():
             # sensor_state_manager.evaluate_sensor_trig_states(sensor_sample.value, sensor_sample.timestamp)
         
         print("current_readout_index:", current_readout_index)
-        sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
+        state_change = sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
+        print(state_change)
 
         # if(current_readout_index == 3):
         #     print("sensor: 0; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp, sensor_handler.get_sample(0, 3).trig_state.name))
