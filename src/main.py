@@ -2,6 +2,7 @@ import numpy as np
 from enum import Enum
 from abc import ABC, abstractmethod
 from inspect import signature
+import datetime
 
 # Import SPI library (for hardware SPI) and MCP3008 library.
 import Adafruit_GPIO.SPI as SPI
@@ -106,17 +107,19 @@ class SensorStateManager:
     current_state = MotionDetectionState.INIT   # hold current state
     succeeding_state = MotionDetectionState.IDLE    # next state to which the program will transition to based on current sensor trig states
    
-    def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int):
+    def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int, log_file_name: str):
         self.number_of_sensors = number_of_sensors
         self.sensor_handler = sensor_handler
         self.num_consecutive_trigs = num_consecutive_trigs
         self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
+        self.filename = log_file_name   # log file to store state changes locally
         self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
         self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.state_change_timestamp = 0
         self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
+        
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
@@ -218,8 +221,8 @@ class SensorStateManager:
             else:
                 verified_trig_states.append(SensorTrigState.UNKNOWN)   # if not all items are same add 'UNKNOWN' trig state to list
         return verified_trig_states
-        
-    def detect_motion_direction(self, sensor_states, current_readout_index):
+    
+    def get_current_state_sum(self):
         # calculate unique value based on current state and sensor trig states were program is executing at now
         # formula used to calculate current state value
         # sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + self.current_state *100
@@ -231,14 +234,9 @@ class SensorStateManager:
                 current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value          # sensor0
         
         current_state_sum += self.current_state.value * 100     # add current state value to sum
-        print("current_state_sum:", current_state_sum)
-        # check if state current state sum exists in dictionary and add succeeding state to variable
-        succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
-        self.succeeding_state = MotionDetectionState(succeeding_state_value)
-        
-        if self.succeeding_state != self.current_state:     # check if a state change will be performed
-            self.sensor_trig_states.fill(0)     # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
-        
+        return current_state_sum
+    
+    def change_state(self, current_readout_index):
         # perform state change and add timestamp when state is changed
         timestamp = 0   # holds the timestamp when a state change occured
         if self.succeeding_state.value > self.current_state.value:   # identify state change direction (moving direction) by its enum values
@@ -256,12 +254,38 @@ class SensorStateManager:
             self.unwanted_state_change_counter = 0      # reset counter
             self.current_state = MotionDetectionState(self.current_state.value - 1)   # number of unwanted trig states reached, change to previous state 
             timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
-            
+
+        return timestamp
+        
+    def detect_motion_direction(self, sensor_states, current_readout_index):
+        current_state_sum = self.get_current_state_sum()    # get the unique value representation of sensor trig states and current state where motion dection algorithm is current running
+        print("current_state_sum:", current_state_sum)
+        
+        # check if state current state sum exists in dictionary and update succeeding state to variable
+        succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
+        self.succeeding_state = MotionDetectionState(succeeding_state_value)
+        
+        if self.succeeding_state != self.current_state:     # check if a state change will be performed
+            self.sensor_trig_states.fill(0)     # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
+        
+        timestamp = self.change_state(current_readout_index)    # analyse if and what state change to perform
+        
         if self.current_state == MotionDetectionState.IDLE:
             self.unwanted_state_change_counter = 0      # reset counter. IDLE is the base state, after INIT is fulfilled once it will never go back to this state
          
         return self.current_state.name, timestamp
-        
+    
+    def log_to_file(self, state_change):
+        # write to log file when every new state change occurs
+        if state_change[1]  != 0:   # only write to file at the instance when state is changed
+            try:
+                with open(self.filename, 'a') as file:
+                    try:
+                        file.write(str(state_change[1]) + ", " + str(state_change[0]) + "\n")
+                    except (IOError, OSError):
+                        print("Error writing to file")
+            except (FileNotFoundError, PermissionError, OSError):
+                print("Error opening file")
     
     def evaluate_sensor_trig_states(self, current_readout_index: int):
         self.import_sensor_trig_states(current_readout_index)
@@ -281,7 +305,12 @@ class SensorStateManager:
                     break
             if sensor_states_are_stable:
                 state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
+                
+                # write to log file when every new state change occurs
+                self.log_to_file(state_change)
+                
                 print(state_change)
+
 
         
 def main():
@@ -289,15 +318,16 @@ def main():
     number_of_sensors = 2
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
-    readout_frequency = 20  # Hz
+    readout_frequency = 30  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 3
-    #time_diff_threshold = 0.2
+    log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y%m%d_[%H%M%S]")
+    print(log_file_name)
     
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
-    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_handler, num_consecutive_trigs, num_consecutive_unwanted_state_changes)
+    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_handler, num_consecutive_trigs, num_consecutive_unwanted_state_changes, log_file_name)
     
     # print("--before--")
     # for i in range(max_samples):
