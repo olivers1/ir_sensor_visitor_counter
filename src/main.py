@@ -14,10 +14,10 @@ import RPi.GPIO as GPIO
 
 # Setup firebase web tool to send data to it
 config = {
-    "apiKey" : "AIzaSyDtDgldsmoxUIWnouTqovdF9QkuPSGwFMY",
-    "authDomain" : "ir-sensor-cat-counter-monitor.firebaseapp.com",
-    "databaseURL" : "https://ir-sensor-cat-counter-monitor-default-rtdb.firebaseio.com/",
-    "storageBucket" : "ir-sensor-cat-counter-monitor.appspot.com"
+    "apiKey" : "wxmm8jpqkGlyfTX8kOGOQ1gf2ItvjySFcJyyCGxP",
+    "authDomain" : "ir-sensor-cat-counter.firebaseapp.com",
+    "databaseURL" : "https://ir-sensor-cat-counter-default-rtdb.europe-west1.firebasedatabase.app/",
+    "storageBucket" : "ir-sensor-cat-counter.appspot.com"
 }
 firebase = pyrebase.initialize_app(config)
 db = firebase.database()
