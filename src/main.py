@@ -307,7 +307,7 @@ class SensorStateManager:
             "Timestamp" : state_change[1],
             "State" : state_change[0]
             } 
-            db.child("Status").push(data)
+            db.child("StateChange").push(data)
             db.update (data)
             #print ("data sent to firebase")
     
