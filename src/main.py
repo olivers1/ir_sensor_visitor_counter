@@ -125,9 +125,7 @@ class SensorStateManager:
         self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
-        self.state_change_timestamp = 0
         self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
-        self.state_change = None    # holds current state along with timestamp
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
@@ -237,16 +235,13 @@ class SensorStateManager:
         return verified_trig_states
     
     def get_current_state_sum(self):
-        # calculate unique value based on current state and sensor trig states were program is executing at now
-        # formula used to calculate current state value
+        # calculate unique value based on current state and sensor trig states which is currently present
         # sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + self.current_state *100
         current_state_sum = 0   # holds the unique value of the sensor trig states and current state
+        multiply = [1, 10]  # sensor id multiplication values
         for sensor_id in range(self.number_of_sensors):
-            if sensor_id == 1:  # check which sensor being assigned a value since sensor1 trig state value is multiplied by 10
-                current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value * 10     # sensor1
-            else:
-                current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value          # sensor0
-        
+            current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value * multiply[sensor_id]    # multiply sensorstate sum with specified value dependent on sensor id
+            
         current_state_sum += self.current_state.value * 100     # add current state value to sum
         return current_state_sum
     
@@ -255,19 +250,19 @@ class SensorStateManager:
         timestamp = 0   # holds the timestamp when a state change occured
         if self.succeeding_state.value > self.current_state.value:   # identify state change direction (moving direction) by its enum values
             self.current_state = self.succeeding_state      # change state
-            timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
+            timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
         elif self.succeeding_state.value < self.current_state.value:
             if self.succeeding_state != MotionDetectionState.IDLE:  # this will handle the transition from EXIT_COMPLETE and ENTRY_COMPLETE to IDLE state
                 self.unwanted_state_change_counter += 1     # increase counter
             else:
                 self.current_state = self.succeeding_state      # change state, complete motion captured back to IDLE state
-                timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
+                timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
         print("unwanted_state_change_counter:", self.unwanted_state_change_counter)
         
         if self.unwanted_state_change_counter >= self.num_consecutive_unwanted_state_changes:
             self.unwanted_state_change_counter = 0      # reset counter
             self.current_state = MotionDetectionState(self.current_state.value - 1)   # number of unwanted trig states reached, change to previous state 
-            timestamp = self.state_change_timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
+            timestamp = self.sensor_handler.get_sample(0, current_readout_index).timestamp  # get sensor timestamp from last sensor readout
 
         return timestamp
         
@@ -287,16 +282,16 @@ class SensorStateManager:
         if self.current_state == MotionDetectionState.IDLE:
             self.unwanted_state_change_counter = 0      # reset counter. IDLE is the base state, after INIT is fulfilled once it will never go back to this state
          
-        return self.current_state.name, timestamp
+        return timestamp, self.current_state.name
     
     def log_state_change(self, state_change):
         # write to log at every state change instance only
-        if state_change[1]  != 0:   # only write to file at the instance when state is changed
+        if state_change[0]  != 0:   # only write to file at the instance when state is changed
             # write to local log file
             try:
                 with open(self.filename, 'a') as file:
                     try:
-                        file.write(str(state_change[1]) + ", " + str(state_change[0]) + "\n")
+                        file.write(str(state_change[0]) + ", " + str(state_change[1]) + "\n")
                     except (IOError, OSError):
                         print("Error writing to file")
             except (FileNotFoundError, PermissionError, OSError):
@@ -304,8 +299,8 @@ class SensorStateManager:
             
             # send data to firebase database
             data = {
-            "Timestamp" : state_change[1],
-            "State" : state_change[0]
+            "Timestamp" : state_change[0],
+            "State" : state_change[1]
             } 
             db.child("StateChange").push(data)
             db.update (data)
@@ -328,13 +323,11 @@ class SensorStateManager:
                     sensor_states_are_stable = False
                     break
             if sensor_states_are_stable:
-                self.state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
+                state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
                 
                 # write to log file when every new state change occurs
-                self.log_state_change(self.state_change)
-                #print(self.state_change)
-                
-        return self.state_change
+                self.log_state_change(state_change)
+                print(state_change)
 
 
         
@@ -343,7 +336,7 @@ def main():
     number_of_sensors = 2
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
-    readout_frequency = 30  # Hz
+    readout_frequency = 2  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 3
     log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -368,8 +361,7 @@ def main():
             # sensor_state_manager.evaluate_sensor_trig_states(sensor_sample.value, sensor_sample.timestamp)
         
         print("current_readout_index:", current_readout_index)
-        state_change = sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
-        print(state_change)
+        sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
 
         # if(current_readout_index == 3):
         #     print("sensor: 0; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp, sensor_handler.get_sample(0, 3).trig_state.name))
