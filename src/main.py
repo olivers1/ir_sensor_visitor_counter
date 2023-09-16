@@ -114,6 +114,7 @@ class MotionDetectionState(Enum):
 class SensorStateManager:
     current_state = MotionDetectionState.INIT   # hold current state
     succeeding_state = MotionDetectionState.IDLE    # next state to which the program will transition to based on current sensor trig states
+    state_is_changed = False
    
     def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int, log_file_name: str):
         self.number_of_sensors = number_of_sensors
@@ -126,6 +127,7 @@ class SensorStateManager:
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
+        self.verified_sensor_trig_states = []  # list containing the verified trig states for sensor_id identified by its index in list
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
@@ -220,7 +222,7 @@ class SensorStateManager:
         #print(self.sensor_trig_states)
     
     def verify_sensor_trig_continuity(self):
-        verified_trig_states = []   # list containing the verified trig states for sensor_id identified by its index in list
+        self.verified_sensor_trig_states.clear()    # clear list too keep it from growing
         for sensor_id in range(self.number_of_sensors):
             ref_item = self.sensor_trig_states[sensor_id][0]    # reference value to compare with the other list items
             all_elements_are_same = True
@@ -228,11 +230,13 @@ class SensorStateManager:
                 if ref_item != item:
                     all_elements_are_same = False   # set boolean to False if any of the trig_states in the list deviates from the other
                     break
+            
             if all_elements_are_same:   
-                verified_trig_states.append(self.sensor_trig_states[sensor_id][0])  # if alla items are same add that sensor trig state
+                self.verified_sensor_trig_states.append(self.sensor_trig_states[sensor_id][0])      # if alla items are same add that sensor trig state
             else:
-                verified_trig_states.append(SensorTrigState.UNKNOWN)   # if not all items are same add 'UNKNOWN' trig state to list
-        return verified_trig_states
+                self.verified_sensor_trig_states.append(SensorTrigState.UNKNOWN)    # if not all list items are same add 'UNKNOWN' trig state to list
+        print("verified_sensor_trig_states:", self.verified_sensor_trig_states)
+        return all_elements_are_same    # returns True if all list items in each of the two lists respectively are same
     
     def get_current_state_sum(self):
         # calculate unique value based on current state and sensor trig states which is currently present
@@ -266,7 +270,7 @@ class SensorStateManager:
 
         return timestamp
         
-    def detect_motion_direction(self, sensor_states, current_readout_index):
+    def detect_motion_direction(self, current_readout_index):
         current_state_sum = self.get_current_state_sum()    # get the unique value representation of sensor trig states and current state where motion dection algorithm is current running
         print("current_state_sum:", current_state_sum)
         
@@ -275,7 +279,10 @@ class SensorStateManager:
         self.succeeding_state = MotionDetectionState(succeeding_state_value)
         
         if self.succeeding_state != self.current_state:     # check if a state change will be performed
+            self.state_is_changed = True    #   state will be changed, used as enabler for logging a state change
             self.sensor_trig_states.fill(0)     # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
+        else:
+            self.state_is_changed = False
         
         timestamp = self.change_state(current_readout_index)    # analyse if and what state change to perform
         
@@ -286,7 +293,7 @@ class SensorStateManager:
     
     def log_state_change(self, state_change):
         # write to log at every state change instance only
-        if state_change[0]  != 0:   # only write to file at the instance when state is changed
+        if self.state_is_changed:   # log the current state only when the state has been changed
             # write to local log file
             try:
                 with open(self.filename, 'a') as file:
@@ -313,17 +320,10 @@ class SensorStateManager:
             self.change_state_is_allowed = True
         
         if self.change_state_is_allowed:    # enough number of sensor sample readouts performed to be able evalute sensor trig states
-            verified_sensor_states = self.verify_sensor_trig_continuity()
-            print(verified_sensor_states)
+            sensor_states_are_stable = self.verify_sensor_trig_continuity()     # True if all sensor trigs have same value in each of the lists
             
-            # check if verified sensor states are stable before performing any state change
-            sensor_states_are_stable = True
-            for sensor_state in verified_sensor_states:
-                if(sensor_state) == SensorTrigState.UNKNOWN:
-                    sensor_states_are_stable = False
-                    break
             if sensor_states_are_stable:
-                state_change = self.detect_motion_direction(verified_sensor_states, current_readout_index)
+                state_change = self.detect_motion_direction(current_readout_index)
                 
                 # write to log file when every new state change occurs
                 self.log_state_change(state_change)
@@ -339,7 +339,7 @@ def main():
     readout_frequency = 2  # Hz
     num_consecutive_trigs = 5
     num_consecutive_unwanted_state_changes = 3
-    log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
