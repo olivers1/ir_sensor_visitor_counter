@@ -95,8 +95,8 @@ class SensorHandler:
     
     def get_sensor_logs(self):
         return self.sensor_logs
+  
     
-
 class MotionDetectionState(Enum):
     INIT = 0
     IDLE = 1
@@ -110,24 +110,11 @@ class MotionDetectionState(Enum):
     ENTRY_B = 7
     ENTRY_C = 8
     ENTRY_COMPLETE = 9
+    
 
-class SensorStateManager:
-    current_state = MotionDetectionState.INIT   # hold current state
-    succeeding_state = MotionDetectionState.IDLE    # next state to which the program will transition to based on current sensor trig states
-    state_is_changed = False
-   
-    def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int, log_file_name: str):
-        self.number_of_sensors = number_of_sensors
-        self.sensor_handler = sensor_handler
-        self.num_consecutive_trigs = num_consecutive_trigs
-        self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
-        self.filename = log_file_name   # log file to store state changes locally
-        self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
-        self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
-        self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
-        self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
-        self.transition_table = self.get_transition_dict()  # dictionary with integer value as keys and MotionDetectionState enum as values
-        self.verified_sensor_trig_states = []  # list containing the verified trig states for sensor_id identified by its index in list
+class TransitionTableProvider:
+    def __init__(self):
+        pass
         
     def get_transition_key(self, sensor0_trig_state: SensorTrigState, sensor1_trig_state: SensorTrigState, current_state: MotionDetectionState, change_to_state: MotionDetectionState):
             # calculate an unique number based on current state parameters
@@ -207,7 +194,31 @@ class SensorStateManager:
         
         for key, value in zip(transition_keys, transition_values):  # populate dictionary
             transition_table[key] = value
+        
         return transition_table
+            
+    def get_transition_table(self):
+        transition_table = self.get_transition_dict()   # generate transition table
+        return transition_table
+
+class SensorStateManager:
+    current_state = MotionDetectionState.INIT   # hold current state
+    succeeding_state = MotionDetectionState.IDLE    # next state to which the program will transition to based on current sensor trig states
+    state_is_changed = False
+   
+    def __init__(self, number_of_sensors: int, sensor_handler: SensorHandler, transition_table: TransitionTableProvider, num_consecutive_trigs: int, num_consecutive_unwanted_state_changes: int, log_file_name: str):
+        self.number_of_sensors = number_of_sensors
+        self.sensor_handler = sensor_handler
+        self.num_consecutive_trigs = num_consecutive_trigs
+        self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
+        self.filename = log_file_name   # log file to store state changes locally
+        self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
+        self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
+        self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
+        self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
+        self.transition_table = transition_table.get_transition_table()     # dictionary with integer value as keys and MotionDetectionState enum as values
+        print("transition_table type:", type(self.transition_table))    # import transition table dictionary from TransitionTableProvider class
+        self.verified_sensor_trig_states = []  # list containing the verified trig states for sensor_id identified by its index in list
 
     def import_sensor_trig_states(self, current_readout_index: int):
         #for i in range(self.num_consecutive_trigs):   # use current sensor readout index get latest sensor trig state as well as a number of previous readouts specified by num_consecutive_trigs variable
@@ -344,7 +355,8 @@ def main():
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
     #print(sensors)
     sensor_handler = SensorHandler(number_of_sensors, max_samples)
-    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_handler, num_consecutive_trigs, num_consecutive_unwanted_state_changes, log_file_name)
+    transition_table = TransitionTableProvider()
+    sensor_state_manager = SensorStateManager(number_of_sensors, sensor_handler, transition_table, num_consecutive_trigs, num_consecutive_unwanted_state_changes, log_file_name)
     
     # print("--before--")
     # for i in range(max_samples):
