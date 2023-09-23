@@ -24,13 +24,18 @@ db = firebase.database()
 
 # GPIO setup
 GPIO.setmode(GPIO.BOARD)
-ir_led_pin = 8		
-GPIO.setup(ir_led_pin,GPIO.OUT)
+ir_pin_led0 = 8     # IR-led for sensor0
+GPIO.setup(ir_pin_led0,GPIO.OUT)
+ir_pin_led1 = 10    # IR-led for sensor1		
+GPIO.setup(ir_pin_led1,GPIO.OUT)
 
-# pwm signal for ir led at ir_led_pin
-pi_pwm = GPIO.PWM (ir_led_pin, 38000)
-pi_pwm.start(0)
-pi_pwm.ChangeDutyCycle(50)  # pwm signal duty cycle
+# pwm signal for IR-led pins
+pi_pwm_led0 = GPIO.PWM (ir_pin_led0, 38000) # IR-led for sensor0
+pi_pwm_led0.start(0)
+pi_pwm_led0.ChangeDutyCycle(50)     # pwm signal duty cycle
+pi_pwm_led1 = GPIO.PWM (ir_pin_led1, 38000) # IR-led for sensor1
+pi_pwm_led1.start(0)
+pi_pwm_led1.ChangeDutyCycle(50)     # pwm signal duty cycle
 
 # Hardware SPI configuration:
 SPI_PORT   = 0
@@ -217,7 +222,6 @@ class SensorStateManager:
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.transition_table = transition_table.get_transition_table()     # dictionary with integer value as keys and MotionDetectionState enum as values
-        print("transition_table type:", type(self.transition_table))    # import transition table dictionary from TransitionTableProvider class
         self.verified_sensor_trig_states = []  # list containing the verified trig states for sensor_id identified by its index in list
 
     def import_sensor_trig_states(self, current_readout_index: int):
