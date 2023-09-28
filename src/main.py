@@ -259,8 +259,12 @@ class SensorStateManager:
         # sensor0_trig_state.value *1 + sensor1_trig_state.value *10 + self.current_state *100
         current_state_sum = 0   # holds the unique value of the sensor trig states and current state
         multiply = [1, 10]  # sensor id multiplication values
+        
         for sensor_id in range(self.number_of_sensors):
-            current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value * multiply[sensor_id]    # multiply sensorstate sum with specified value dependent on sensor id
+            current_state_sum += self.verified_sensor_trig_states[sensor_id].value * multiply[sensor_id]    # use verified trig state as input to get current state sum
+        
+        # for sensor_id in range(self.number_of_sensors):
+        #     current_state_sum += self.sensor_trig_states[sensor_id][self.sample_counter].value * multiply[sensor_id]    # multiply sensorstate sum with specified value dependent on sensor id
             
         current_state_sum += self.current_state.value * 100     # add current state value to sum
         return current_state_sum
@@ -292,7 +296,8 @@ class SensorStateManager:
         
         # check if state current state sum exists in dictionary and update succeeding state to variable
         succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
-        self.succeeding_state = MotionDetectionState(succeeding_state_value)
+        if succeeding_state_value != -1:    # if value not found in transition dictionary do not change state
+            self.succeeding_state = MotionDetectionState(succeeding_state_value)
         
         if self.succeeding_state != self.current_state:     # check if a state change will be performed
             self.state_is_changed = True    #   state will be changed, used as enabler for logging a state change
@@ -380,6 +385,8 @@ def main():
         
         #print("current_readout_index:", current_readout_index)
         sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
+        print("sensor: 0; index: {:d}; value: {:d}; time: {:d}; state: {:s}".format(current_readout_index, sensor_handler.get_sample(0, current_readout_index).value, sensor_handler.get_sample(0, current_readout_index).timestamp, sensor_handler.get_sample(0, current_readout_index).trig_state.name))
+        print("sensor: 1; index: {:d}; value: {:d}; time: {:d}; state: {:s}".format(current_readout_index, sensor_handler.get_sample(1, current_readout_index).value, sensor_handler.get_sample(1, current_readout_index).timestamp, sensor_handler.get_sample(1, current_readout_index).trig_state.name))
 
         # if(current_readout_index == 3):
         #     print("sensor: 0; index: 3; value: {:d}; time: {:d}; state: {:s}".format(sensor_handler.get_sample(0, 3).value, sensor_handler.get_sample(0, 3).timestamp, sensor_handler.get_sample(0, 3).trig_state.name))
