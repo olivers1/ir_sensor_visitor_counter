@@ -14,7 +14,7 @@ import RPi.GPIO as GPIO
 
 # Setup firebase web tool to send data to it
 config = {
-    "apiKey" : "wxmm8jpqkGlyfTX8kOGOQ1gf2ItvjySFcJyyCGxP",
+    "apiKey" : "AIzaSyBw_uKYdJ5P7rS4a0zEZEWDbM8A2EQ1nC4",
     "authDomain" : "ir-sensor-cat-counter.firebaseapp.com",
     "databaseURL" : "https://ir-sensor-cat-counter-default-rtdb.europe-west1.firebasedatabase.app/",
     "storageBucket" : "ir-sensor-cat-counter.appspot.com"
@@ -23,6 +23,7 @@ firebase = pyrebase.initialize_app(config)
 db = firebase.database()
 
 # GPIO setup
+GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BOARD)
 ir_pin_led0 = 8     # IR-led for sensor0
 GPIO.setup(ir_pin_led0,GPIO.OUT)
@@ -218,7 +219,7 @@ class SensorStateManager:
         self.num_consecutive_unwanted_state_changes = num_consecutive_unwanted_state_changes    # amount of unwanted state changes when current state is where a entry/exit motion detection has been initiated (not in INIT or IDLE state)
         self.filename = log_file_name   # log file to store state changes locally
         self.unwanted_state_change_counter = 0     # counter to keep track of number of unwanted stage changes to determine when program should go back to INIT state
-        self.sensor_trig_states = np.array([[SensorTrigState.NO_TRIG for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
+        self.sensor_trig_states = np.array([[SensorTrigState.UNKNOWN for _ in range(num_consecutive_trigs)] for _ in range(self.number_of_sensors)])    # create number of items needed a buffered number of sensor trig states for evaluation
         self.change_state_is_allowed = False    # enabler to start evaluate sensor trig states only after a specified number of sensor readouts
         self.sample_counter = 0     # index to keep track of where in sensor_trig_states array to store sensor trig states
         self.transition_table = transition_table.get_transition_table()     # dictionary with integer value as keys and MotionDetectionState enum as values
@@ -234,7 +235,7 @@ class SensorStateManager:
         # keep sensor_trig_states buffer at fixed size
         if self.sample_counter >= self.num_consecutive_trigs:   
             self.sample_counter = 0
-        #print(self.sensor_trig_states)
+        print(self.sensor_trig_states)
     
     def verify_sensor_trig_continuity(self):
         self.verified_sensor_trig_states.clear()    # clear list too keep it from growing
@@ -295,7 +296,7 @@ class SensorStateManager:
         
         if self.succeeding_state != self.current_state:     # check if a state change will be performed
             self.state_is_changed = True    #   state will be changed, used as enabler for logging a state change
-            self.sensor_trig_states.fill(0)     # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
+            self.sensor_trig_states.fill(SensorTrigState.UNKNOWN)   # clear trig_state array at every state change to avoid falling back several states at once when unwanted state change is detected
         else:
             self.state_is_changed = False
         
@@ -309,6 +310,7 @@ class SensorStateManager:
     def log_state_change(self, state_change):
         # write to log at every state change instance only
         if self.state_is_changed:   # log the current state only when the state has been changed
+            #print(state_change)
             # write to local log file
             try:
                 with open(self.filename, 'a') as file:
@@ -342,7 +344,7 @@ class SensorStateManager:
                 
                 # write to log file when every new state change occurs
                 self.log_state_change(state_change)
-                print(state_change)
+                print("last state:", state_change)
 
 
         
@@ -351,9 +353,9 @@ def main():
     number_of_sensors = 2
     max_samples = 10
     sensor_trig_threshold = 800     # sensor digital value (0 - 1023) to represent IR-sensor detection, below threshold value == sensor trig
-    readout_frequency = 2  # Hz
+    readout_frequency = 15  # Hz
     num_consecutive_trigs = 5
-    num_consecutive_unwanted_state_changes = 3
+    num_consecutive_unwanted_state_changes = 5
     log_file_name = "/home/olivers/Documents/python/ir_sensor_visitor_counter/logs/" + datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     
     sensors = np.array([IrSensor(sensor_id, sensor_trig_threshold) for sensor_id in range(number_of_sensors)]) # create the rows in matrix that represents each of the sensors
@@ -376,7 +378,7 @@ def main():
             # sensor_sample = sensor_handler.get_sample(sensor_id, 0)  # fetch current sensor readouts only
             # sensor_state_manager.evaluate_sensor_trig_states(sensor_sample.value, sensor_sample.timestamp)
         
-        print("current_readout_index:", current_readout_index)
+        #print("current_readout_index:", current_readout_index)
         sensor_state_manager.evaluate_sensor_trig_states(current_readout_index)
 
         # if(current_readout_index == 3):
@@ -390,16 +392,16 @@ def main():
         
         time.sleep(1/readout_frequency) # setting periodic time for sensor readout
         
-    print("--after--")
-    for i in range(max_samples):
-        for j in range(number_of_sensors):
-            print("[{:d}][{:d}] {:d} : {:d} : {:s}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp, sensor_handler.get_sample(j, i).trig_state.name))
-    print("-----")
+    # print("--after--")
+    # for i in range(max_samples):
+    #     for j in range(number_of_sensors):
+    #         print("[{:d}][{:d}] {:d} : {:d} : {:s}".format(j, i, sensor_handler.get_sample(j, i).value, sensor_handler.get_sample(j, i).timestamp, sensor_handler.get_sample(j, i).trig_state.name))
+    # print("-----")
     
-    sensor_logs = sensor_handler.get_sensor_logs()
-    # print(type(sensor_logs))
-    print(sensor_logs.shape)
-    # print(sensor_logs)
+    # sensor_logs = sensor_handler.get_sensor_logs()
+    # # print(type(sensor_logs))
+    # print(sensor_logs.shape)
+    # # print(sensor_logs)
 
     
         
