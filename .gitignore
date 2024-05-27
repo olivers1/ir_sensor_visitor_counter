@@ -154,3 +154,5 @@ cython_debug/
 
 # Folders and files
 /logs
+.DS_Store
+
