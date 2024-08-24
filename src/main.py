@@ -294,7 +294,7 @@ class SensorStateManager:
         
     def detect_motion_direction(self, current_readout_index):
         current_state_sum = self.get_current_state_sum()    # get the unique value representation of accumelated list with sensor trig states and current state where motion dection algorithm is current running
-        print("current_state_sum:", current_state_sum)
+        #print("current_state_sum:", current_state_sum)
         
         # check if state current state sum exists in dictionary and update succeeding state to variable
         succeeding_state_value = self.transition_table.get(current_state_sum, -1)   # -1 is returned if key not found in dictionary
